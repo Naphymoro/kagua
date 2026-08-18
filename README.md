@@ -2,37 +2,72 @@
 
 Evidence-grounded journal intelligence for researchers.
 
-Kagua discovers journals from live scholarly infrastructure, verifies DHET recognition by ISSN, enriches APC and bibliometric evidence, and ranks eligible journals with an explainable Kagua Trilemma Score (KTS) and KPOS publication-opportunity score.
+## Kagua v0.3
 
-## Kagua Journal Trilemma
+Kagua takes a manuscript title + abstract, discovers candidate journals from live scholarly infrastructure, applies an eligibility authority, calculates an explainable Journal Trilemma Score (KTS), adds publication-pathway evidence into KPOS, and returns five journals at a time until researcher and supervisor reach consensus.
 
-The three primary nodes are:
+### Eligibility authority
+
+**DHET 2025–2026 is the default.** Kagua resolves DHET recognition by normalized ISSN/eISSN against its versioned official index and explains the match on every result.
+
+Researchers can upload a university/institution journal list (XLSX/XLS/CSV/TSV/text) and choose:
+
+- DHET only (default)
+- University list only
+- DHET OR university list
+- Open search
+
+Uploaded lists are matched ISSN-first, with normalized title equality as a secondary fallback. The uploaded list is sent with the analysis request and is not treated as a new global authority.
+
+### Journal Trilemma
+
+The visible triangle is inspired by the World Energy Council's balance concept but uses Kagua's own publishing dimensions:
 
 1. Scientific & Editorial Fit
 2. Quality & Influence
 3. Affordability & Access
 
-Publication speed is a separate Publication Pathway indicator used in KPOS. Scope is supreme: journals below the 60/100 scientific/editorial fit threshold cannot enter the Top 5 regardless of prestige or cost.
+Default strategic weights are 45 / 35 / 20. KTS is a weighted geometric mean, and scope also has a 60/100 eligibility floor. Speed is deliberately outside the triangle and is a Publication Pathway indicator.
 
-Quality & Influence can incorporate verified quartile, authorised JCR Journal Impact Factor percentile, OpenAlex citation performance, and h-index. Missing licensed metrics remain explicitly unverified rather than inferred.
+### Quality node
 
-## Five-at-a-time decision loop
+When evidence exists, Quality & Influence combines verified quartile, verified field-normalised JIF percentile, OpenAlex two-year mean citedness, and OpenAlex h-index. Missing metrics are not scored as zero; their weights are renormalized across available evidence. Raw JIF is never inferred from OpenAlex.
 
-Kagua returns five unseen journals at a time. Researcher/student and supervisor independently mark each journal Suitable or Not suitable and may record a note. If neither selects a target, “None fit — show 5 more” excludes every journal already seen and retrieves the next five. The loop stops when both researcher and supervisor approve the same journal or the live evidence pool is exhausted. Human votes never mutate KTS/KPOS.
+### Godmode LLM routing
 
-## Evidence sources
+Godmode is DeepSeek-first and provider-neutral. It can attempt configured OpenAI-compatible providers in order and move to the next when a provider is unconfigured, unavailable, rate-limited, returns invalid JSON, or exhausts its output token allowance. The response records every attempt and the model actually selected.
 
-- Crossref: live manuscript-to-literature discovery
-- OpenAlex: independent discovery and open bibliometric signals
-- DHET: official 2025–2026 accredited-journals workbook, normalized by ISSN during build
-- DOAJ: APC/no-APC evidence when available
-- Institutional evidence adapter: authorised quartile, JIF, publisher APC and first-decision evidence
+Supported first-class profiles:
 
-## LLM modes
+- DeepSeek official API
+- OpenAI
+- OpenRouter
+- custom OpenAI-compatible endpoint
+- local Ollama-compatible model (browser-local mode)
+- deterministic scoring-only mode
 
-Kagua works without an LLM. It also supports browser-local Ollama-compatible models and cloud BYOK OpenAI-compatible endpoints. Journal facts remain evidence-plane data and cannot be invented by the LLM.
+The official hosted DeepSeek API is usage-priced; Kagua does **not** label it free. The zero-API-cost option is running an open DeepSeek model locally.
 
-## Local production run
+### Environment
+
+See `.env.example`. Godmode checks configured server providers in DeepSeek-first order. BYOK provider configuration can also be sent per analysis request. Never commit API keys.
+
+### Manual
+
+The in-app `/manual` route documents the full schema flow, KTS/KPOS mathematics, node contributions, eligibility logic, evidence confidence, Godmode failover and the five-at-a-time human decision loop.
+
+### Production principles
+
+- No static journal catalogue fallback when live discovery fails.
+- Scope fit is supreme and must pass the eligibility floor.
+- DHET is the default eligibility authority, not an unexplained badge.
+- University lists can override/supplement DHET explicitly.
+- Missing JIF/quartile/APC/time evidence remains unknown.
+- LLMs interpret; they do not create journal facts.
+- Human researcher/supervisor decisions never silently mutate KTS/KPOS.
+- Five unseen journals are returned per batch until consensus or evidence exhaustion.
+
+### Run
 
 ```bash
 npm install
@@ -40,27 +75,4 @@ npm run build
 npm start
 ```
 
-Open `http://localhost:3000`. Health check: `GET /api/health`.
-
-## Environment
-
-Copy `.env.example` to `.env.local`. At minimum set `KAGUA_CONTACT_EMAIL` for identified Crossref/OpenAlex requests. Optional variables include `OPENALEX_API_KEY`, cloud/local LLM defaults, and the institutional evidence adapter credentials.
-
-## Deploy from GitHub
-
-This repository is intended to be the source of truth and CI/CD origin. GitHub Pages is not suitable because Kagua uses server-side Next.js API routes.
-
-1. Push/merge to `main`.
-2. Confirm GitHub Actions is green. CI installs dependencies, generates the DHET evidence index, typechecks, lints and performs a production Next.js build.
-3. Import this GitHub repository into Vercel.
-4. Framework preset: Next.js.
-5. Add `KAGUA_CONTACT_EMAIL` and any optional server-side environment variables.
-6. Deploy.
-7. Verify `/api/health` reports `status: ok` and the expected DHET edition.
-8. Test scoring-only mode first, then test “show 5 more”, human consensus, local LLM and cloud BYOK separately.
-
-## Production evidence policy
-
-The DHET runtime index is generated from the official workbook during build and the build fails closed if retrieval or parsing is suspicious. Crossref/OpenAlex fail closed when both providers are unavailable. Unknown APC, quartile, JIF and decision-time values remain unknown. Licensed metrics must enter through an authorised adapter with provenance.
-
-See `ARCHITECTURE.md` for the scoring and governance design.
+Health endpoint: `/api/health`.
