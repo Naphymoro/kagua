@@ -2,19 +2,147 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import XLSX from 'xlsx';
-const SOURCE_URL=process.env.DHET_SOURCE_URL||'https://www.dhet.gov.za/Policy%20and%20Development%20Support/2025-2026%20DHET%20List%20of%20%20Accerdited%20Journals.xls';
-const OUTPUT=join(process.cwd(),'src/lib/kagua/data/dhet-2025-2026.json.gz');
-const ISSN_RE=/\b\d{4}-?\d{3}[\dXx]\b/g;
-const norm=v=>{const r=String(v||'').toUpperCase().replace(/[^0-9X]/g,'');return r.length===8?`${r.slice(0,4)}-${r.slice(4)}`:null};
-const compact=v=>String(v??'').replace(/\s+/g,' ').trim();
-function sourceIndex(name){const n=name.toLowerCase();if(n.includes('scopus'))return'SCOPUS';if(n.includes('web of science')||n.includes('wos')||n.includes('clarivate'))return'WOS';if(n.includes('doaj'))return'DOAJ';if(n.includes('ibss'))return'IBSS';if(n.includes('norweg'))return'NORWEGIAN';if(n.includes('scielo'))return'SCIELO_SA';if(n.includes('dhet')||n.includes('south african'))return'DHET';return name.toUpperCase().replace(/[^A-Z0-9]+/g,'_')}
-function issns(row){const out=new Set();for(const cell of row)for(const m of compact(cell).matchAll(ISSN_RE)){const i=norm(m[0]);if(i)out.add(i)}return[...out]}
-function title(row){for(const cell of row.map(compact).filter(Boolean)){const s=cell.replace(ISSN_RE,'').trim();if(s.length>=4&&!/^https?:\/\//i.test(s)&&!/^(journal|title|publisher|issn|e-?issn|source|index|notes?|comments?|impact factor|jif|quartile)$/i.test(s)&&!/^\d+(\.\d+)?$/.test(s))return s}return''}
-function headerMap(rows){for(let i=0;i<Math.min(rows.length,20);i++){const cells=(rows[i]||[]).map(v=>compact(v).toLowerCase()),joined=cells.join(' | ');if(/issn|journal|title/.test(joined)){const find=re=>cells.findIndex(x=>re.test(x));return{row:i,title:find(/^(journal\s*)?(title|name)$|journal title/),publisher:find(/publisher/),jif:find(/impact\s*factor|journal\s*impact\s*factor|^jif$/),quartile:find(/quartile|^q[1-4]$/),jifYear:find(/impact.*year|jif.*year|year.*impact/)};}}return{row:-1,title:-1,publisher:-1,jif:-1,quartile:-1,jifYear:-1}}
-function num(v){const m=compact(v).replace(',','.').match(/\d+(?:\.\d+)?/);return m?Number(m[0]):null}
-function qx(v){const m=compact(v).toUpperCase().match(/\bQ([1-4])\b/);return m?`Q${m[1]}`:null}
-const response=await fetch(SOURCE_URL,{headers:{'User-Agent':'Kagua/1.0 DHET index builder'}});if(!response.ok)throw new Error(`DHET workbook fetch failed: ${response.status}`);
-const workbook=XLSX.read(Buffer.from(await response.arrayBuffer()),{type:'buffer'}),recordsByIssn={};let matchedRows=0,metricRows=0;
-for(const sheetName of workbook.SheetNames){const index=sourceIndex(sheetName),rows=XLSX.utils.sheet_to_json(workbook.Sheets[sheetName],{header:1,defval:'',raw:false}),hm=headerMap(rows);for(let ri=0;ri<rows.length;ri++){const row=rows[ri];if(!Array.isArray(row)||ri===hm.row)continue;const ids=issns(row),t=hm.title>=0?compact(row[hm.title])||title(row):title(row);if(!ids.length||!t)continue;matchedRows++;const publisher=hm.publisher>=0?compact(row[hm.publisher])||null:null,jif=hm.jif>=0?num(row[hm.jif]):null,quartile=hm.quartile>=0?qx(row[hm.quartile]):null,jifYear=hm.jifYear>=0?num(row[hm.jifYear]):null;if(jif!=null||quartile)metricRows++;for(const id of ids){const e=recordsByIssn[id],metrics={impactFactor:e?.metrics?.impactFactor??jif,impactFactorYear:e?.metrics?.impactFactorYear??jifYear,quartile:e?.metrics?.quartile??quartile};recordsByIssn[id]={title:e?.title||t,publisher:e?.publisher||publisher||null,issns:[...new Set([...(e?.issns||[]),...ids])],indices:[...new Set([...(e?.indices||[]),index])].sort(),metrics,details:{sheet:sheetName,row:ri+1,metricColumns:{jif:hm.jif>=0,quartile:hm.quartile>=0,jifYear:hm.jifYear>=0}}}}}
-if(Object.keys(recordsByIssn).length<10000)throw new Error(`DHET parse produced only ${Object.keys(recordsByIssn).length} ISSNs; refusing production build.`);
-const data={source:'South African Department of Higher Education and Training',edition:'2025-2026',retrievedAt:new Date().toISOString(),sourceUrl:SOURCE_URL,matchedRows,metricRows,recordsByIssn};mkdirSync(dirname(OUTPUT),{recursive:true});writeFileSync(OUTPUT,gzipSync(Buffer.from(JSON.stringify(data)),{level:9}));console.log(`DHET index ready: ${Object.keys(recordsByIssn).length} ISSN keys; ${metricRows} rows with explicit JIF/quartile evidence.`);
+
+const SOURCE_URL = process.env.DHET_SOURCE_URL || 'https://www.dhet.gov.za/Policy%20and%20Development%20Support/2025-2026%20DHET%20List%20of%20%20Accerdited%20Journals.xls';
+const OUTPUT = join(process.cwd(), 'src/lib/kagua/data/dhet-2025-2026.json.gz');
+const ISSN_RE = /\b\d{4}-?\d{3}[\dXx]\b/g;
+
+const norm = (v) => {
+  const r = String(v || '').toUpperCase().replace(/[^0-9X]/g, '');
+  return r.length === 8 ? `${r.slice(0, 4)}-${r.slice(4)}` : null;
+};
+const compact = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
+
+function sourceIndex(name) {
+  const n = name.toLowerCase();
+  if (n.includes('scopus')) return 'SCOPUS';
+  if (n.includes('web of science') || n.includes('wos') || n.includes('clarivate')) return 'WOS';
+  if (n.includes('doaj')) return 'DOAJ';
+  if (n.includes('ibss')) return 'IBSS';
+  if (n.includes('norweg')) return 'NORWEGIAN';
+  if (n.includes('scielo')) return 'SCIELO_SA';
+  if (n.includes('dhet') || n.includes('south african')) return 'DHET';
+  return name.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+}
+
+function issns(row) {
+  const out = new Set();
+  for (const cell of row) {
+    for (const m of compact(cell).matchAll(ISSN_RE)) {
+      const i = norm(m[0]);
+      if (i) out.add(i);
+    }
+  }
+  return [...out];
+}
+
+function title(row) {
+  for (const cell of row.map(compact).filter(Boolean)) {
+    const s = cell.replace(ISSN_RE, '').trim();
+    if (
+      s.length >= 4 &&
+      !/^https?:\/\//i.test(s) &&
+      !/^(journal|title|publisher|issn|e-?issn|source|index|notes?|comments?|impact factor|jif|quartile)$/i.test(s) &&
+      !/^\d+(\.\d+)?$/.test(s)
+    ) return s;
+  }
+  return '';
+}
+
+function headerMap(rows) {
+  for (let i = 0; i < Math.min(rows.length, 20); i++) {
+    const cells = (rows[i] || []).map((v) => compact(v).toLowerCase());
+    const joined = cells.join(' | ');
+    if (/issn|journal|title/.test(joined)) {
+      const find = (re) => cells.findIndex((x) => re.test(x));
+      return {
+        row: i,
+        title: find(/^(journal\s*)?(title|name)$|journal title/),
+        publisher: find(/publisher/),
+        jif: find(/impact\s*factor|journal\s*impact\s*factor|^jif$/),
+        quartile: find(/quartile|^q[1-4]$/),
+        jifYear: find(/impact.*year|jif.*year|year.*impact/),
+      };
+    }
+  }
+  return { row: -1, title: -1, publisher: -1, jif: -1, quartile: -1, jifYear: -1 };
+}
+
+function num(v) {
+  const m = compact(v).replace(',', '.').match(/\d+(?:\.\d+)?/);
+  return m ? Number(m[0]) : null;
+}
+
+function qx(v) {
+  const m = compact(v).toUpperCase().match(/\bQ([1-4])\b/);
+  return m ? `Q${m[1]}` : null;
+}
+
+const response = await fetch(SOURCE_URL, { headers: { 'User-Agent': 'Kagua/1.0 DHET index builder' } });
+if (!response.ok) throw new Error(`DHET workbook fetch failed: ${response.status}`);
+
+const workbook = XLSX.read(Buffer.from(await response.arrayBuffer()), { type: 'buffer' });
+const recordsByIssn = {};
+let matchedRows = 0;
+let metricRows = 0;
+
+for (const sheetName of workbook.SheetNames) {
+  const index = sourceIndex(sheetName);
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '', raw: false });
+  const hm = headerMap(rows);
+
+  for (let ri = 0; ri < rows.length; ri++) {
+    const row = rows[ri];
+    if (!Array.isArray(row) || ri === hm.row) continue;
+
+    const ids = issns(row);
+    const t = hm.title >= 0 ? compact(row[hm.title]) || title(row) : title(row);
+    if (!ids.length || !t) continue;
+
+    matchedRows++;
+    const publisher = hm.publisher >= 0 ? compact(row[hm.publisher]) || null : null;
+    const jif = hm.jif >= 0 ? num(row[hm.jif]) : null;
+    const quartile = hm.quartile >= 0 ? qx(row[hm.quartile]) : null;
+    const jifYear = hm.jifYear >= 0 ? num(row[hm.jifYear]) : null;
+    if (jif != null || quartile) metricRows++;
+
+    for (const id of ids) {
+      const e = recordsByIssn[id];
+      const metrics = {
+        impactFactor: e?.metrics?.impactFactor ?? jif,
+        impactFactorYear: e?.metrics?.impactFactorYear ?? jifYear,
+        quartile: e?.metrics?.quartile ?? quartile,
+      };
+      recordsByIssn[id] = {
+        title: e?.title || t,
+        publisher: e?.publisher || publisher || null,
+        issns: [...new Set([...(e?.issns || []), ...ids])],
+        indices: [...new Set([...(e?.indices || []), index])].sort(),
+        metrics,
+        details: {
+          sheet: sheetName,
+          row: ri + 1,
+          metricColumns: { jif: hm.jif >= 0, quartile: hm.quartile >= 0, jifYear: hm.jifYear >= 0 },
+        },
+      };
+    }
+  }
+}
+
+if (Object.keys(recordsByIssn).length < 10000) {
+  throw new Error(`DHET parse produced only ${Object.keys(recordsByIssn).length} ISSNs; refusing production build.`);
+}
+
+const data = {
+  source: 'South African Department of Higher Education and Training',
+  edition: '2025-2026',
+  retrievedAt: new Date().toISOString(),
+  sourceUrl: SOURCE_URL,
+  matchedRows,
+  metricRows,
+  recordsByIssn,
+};
+
+mkdirSync(dirname(OUTPUT), { recursive: true });
+writeFileSync(OUTPUT, gzipSync(Buffer.from(JSON.stringify(data)), { level: 9 }));
+console.log(`DHET index ready: ${Object.keys(recordsByIssn).length} ISSN keys; ${metricRows} rows with explicit JIF/quartile evidence.`);
