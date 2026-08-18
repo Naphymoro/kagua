@@ -1,0 +1,2 @@
+# Runtime DHET index is generated during build from the official DHET workbook.
+# See scripts/build-dhet-index.mjs and data/README.md.
