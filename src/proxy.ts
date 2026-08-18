@@ -1,4 +1,25 @@
-import{clerkClient,clerkMiddleware,createRouteMatcher}from"@clerk/nextjs/server";import{NextResponse}from"next/server";
-const isPublic=createRouteMatcher(["/sign-in(.*)","/access-denied(.*)"]);
-export default clerkMiddleware(async(auth,req)=>{if(isPublic(req))return;const session=await auth();if(!session.userId){await auth.protect();return}const client=await clerkClient();const user=await client.users.getUser(session.userId);const primary=user.emailAddresses.find(e=>e.id===user.primaryEmailAddressId),email=primary?.emailAddress?.trim().toLowerCase()||"";if(!primary?.verification||primary.verification.status!=="verified"||!email.endsWith("@aimsric.org")){if(req.nextUrl.pathname.startsWith("/api/"))return NextResponse.json({error:"Kagua access is restricted to verified @aimsric.org accounts."},{status:403});return NextResponse.redirect(new URL("/access-denied",req.url))}});
-export const config={matcher:["/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)","/(api|trpc)(.*)"]};
+import { NextResponse } from "next/server";
+import { auth, isAllowedEmail } from "@/auth";
+
+const publicPaths = ["/sign-in", "/access-denied", "/api/auth"];
+
+export default auth((req) => {
+  const path = req.nextUrl.pathname;
+  if (publicPaths.some((p) => path.startsWith(p))) return NextResponse.next();
+
+  const email = req.auth?.user?.email;
+  if (!req.auth || !isAllowedEmail(email)) {
+    if (path.startsWith("/api/")) {
+      return NextResponse.json({ error: "Kagua access is restricted to verified @aimsric.org Google accounts." }, { status: 403 });
+    }
+    const signInUrl = new URL("/sign-in", req.url);
+    signInUrl.searchParams.set("callbackUrl", path);
+    return NextResponse.redirect(signInUrl);
+  }
+
+  return NextResponse.next();
+});
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+};
