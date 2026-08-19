@@ -1,4 +1,5 @@
-import { signIn } from "@/auth";
+import Link from "next/link";
+import { googleOAuthReady, localAuthBypass, signIn } from "@/auth";
 
 export default function Page() {
   return <main className="authShell">
@@ -16,12 +17,17 @@ export default function Page() {
         <p>Use your verified institutional Google account. No separate Kagua password is required.</p>
       </div>
 
-      <form action={async()=>{"use server";await signIn("google",{redirectTo:"/"})}}>
-        <button className="googleSignIn" type="submit">
-          <span className="googleGlyph" aria-hidden="true">G</span>
-          <span>Continue with Google</span>
-        </button>
-      </form>
+      {googleOAuthReady ? <form action={async()=>{"use server";await signIn("google",{redirectTo:"/"})}}>
+          <button className="googleSignIn" type="submit">
+            <span className="googleGlyph" aria-hidden="true">G</span>
+            <span>Continue with Google</span>
+          </button>
+        </form> :
+        <div className="authSetupWarning">
+          <b>Google sign-in is not configured</b>
+          <small>Set <code>AUTH_GOOGLE_ID</code> and <code>AUTH_GOOGLE_SECRET</code> in the deployment environment.</small>
+          {localAuthBypass && <Link className="authLocalPreview" href="/">Open local preview</Link>}
+        </div>}
 
       <div className="authDomainRule">
         <span className="authRuleDot" aria-hidden="true"/>

@@ -71,6 +71,7 @@ The in-app `/manual` route documents the full schema flow, KTS/KPOS mathematics,
 
 ```bash
 npm install
+npx vercel env pull .env.local # optional: pulls deployed env vars for local preview after Vercel login
 npm run build
 npm start
 ```

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { auth, isAllowedEmail } from "@/auth";
+import { auth, isAllowedEmail, localAuthBypass } from "@/auth";
 
 const publicPaths = ["/sign-in", "/access-denied", "/api/auth"];
 
 export default auth((req) => {
   const path = req.nextUrl.pathname;
   if (publicPaths.some((p) => path.startsWith(p))) return NextResponse.next();
+  if (localAuthBypass) return NextResponse.next();
 
   const email = req.auth?.user?.email;
   if (!req.auth || !isAllowedEmail(email)) {

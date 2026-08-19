@@ -1,29 +1,1186 @@
 "use client";
-import{FormEvent,useEffect,useMemo,useState}from"react";
-import Link from"next/link";
-import{parseCustomJournalList}from"@/lib/kagua/custom-list";
-import type{AnalysisResponse,CustomJournalList,EligibilityPolicy,JournalScore,LlmMode,LlmProviderId,MetricPreferences,Quartile}from"@/lib/kagua/types";
-type Theme="light"|"dark";type Vote="undecided"|"approve"|"reject";type Decision={researcher:Vote;supervisor:Vote;note:string};
-const providers=[{id:"openai" as LlmProviderId,label:"OpenAI",model:"gpt-5.6-sol",baseUrl:"https://api.openai.com/v1",keyUrl:"https://platform.openai.com/api-keys"},{id:"deepseek" as LlmProviderId,label:"DeepSeek",model:"deepseek-chat",baseUrl:"https://api.deepseek.com",keyUrl:"https://platform.deepseek.com/api_keys"}];
-const quartileOptions:{value:string;label:string;quartiles:Quartile[]}[]=[{value:"any",label:"Any quartile",quartiles:[]},{value:"Q1",label:"Q1 only",quartiles:["Q1"]},{value:"Q2",label:"Q2 only",quartiles:["Q2"]},{value:"Q3",label:"Q3 only",quartiles:["Q3"]},{value:"Q4",label:"Q4 only",quartiles:["Q4"]},{value:"Q1-Q2",label:"Q1-Q2",quartiles:["Q1","Q2"]},{value:"Q2-Q3",label:"Q2-Q3",quartiles:["Q2","Q3"]},{value:"Q3-Q4",label:"Q3-Q4",quartiles:["Q3","Q4"]},{value:"Q1-Q3",label:"Q1-Q3",quartiles:["Q1","Q2","Q3"]},{value:"Q2-Q4",label:"Q2-Q4",quartiles:["Q2","Q3","Q4"]},{value:"Q1-Q4",label:"Q1-Q4",quartiles:["Q1","Q2","Q3","Q4"]}];
-const empty=():Decision=>({researcher:"undecided",supervisor:"undecided",note:""});
-export default function Home(){
- const[theme,setTheme]=useState<Theme>("light"),[title,setTitle]=useState(""),[abstract,setAbstract]=useState(""),[keywords,setKeywords]=useState(""),[budget,setBudget]=useState(2500),[days,setDays]=useState(45),[metrics,setMetrics]=useState<MetricPreferences>({apc:true,quartile:true,impactFactor:true}),[quartilePreset,setQuartilePreset]=useState("any"),[jifMin,setJifMin]=useState(""),[jifMax,setJifMax]=useState(""),[eligibilityPolicy,setEligibilityPolicy]=useState<EligibilityPolicy>("dhet"),[customList,setCustomList]=useState<CustomJournalList|null>(null),[listBusy,setListBusy]=useState(false),[mode,setMode]=useState<LlmMode>("godmode"),[provider,setProvider]=useState<LlmProviderId>("openai"),[apiKey,setApiKey]=useState(""),[keyOpen,setKeyOpen]=useState(false),[model,setModel]=useState("gpt-5.6-sol"),[baseUrl,setBaseUrl]=useState("https://api.openai.com/v1"),[data,setData]=useState<AnalysisResponse|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(""),[seen,setSeen]=useState<string[]>([]),[batch,setBatch]=useState(1),[decisions,setDecisions]=useState<Record<string,Decision>>({}),[explore,setExplore]=useState(false),[sort,setSort]=useState<keyof JournalScore>("kpos");
- useEffect(()=>{document.documentElement.dataset.theme=theme},[theme]);
- const p=providers.find(x=>x.id===provider)||providers[0];
- const kw=useMemo(()=>keywords.split(/[,;\n]/).map(x=>x.trim()).filter(Boolean),[keywords]);
- const selectedQuartiles=quartileOptions.find(x=>x.value===quartilePreset)?.quartiles||[];
- const table=useMemo(()=>[...(data?.rankingExplorer||[])].sort((a,b)=>Number(b[sort]||0)-Number(a[sort]||0)),[data,sort]);
- function chooseProvider(id:LlmProviderId){setProvider(id);const x=providers.find(v=>v.id===id);if(x){setModel(x.model);setBaseUrl(x.baseUrl)}}
- async function uploadList(file:File|null){if(!file)return;setListBusy(true);setError("");try{const parsed=await parseCustomJournalList(file);if(!parsed.entries.length)throw new Error("No journal titles or ISSNs were detected in that file.");setCustomList(parsed);setEligibilityPolicy("custom")}catch(e){setCustomList(null);setError(e instanceof Error?e.message:"Could not parse the journal list.")}finally{setListBusy(false)}}
- function payload(exclude:string[],m:LlmMode){const llm=m==="provider"?{mode:m,provider,apiKey,model,baseUrl}:m==="godmode"&&apiKey?{mode:m,providers:[{id:provider,apiKey,model,baseUrl,enabled:true}]}:{mode:m};return{title,abstract,keywords:kw,budgetUsd:budget,desiredDays:days,dhetOnly:eligibilityPolicy==="dhet",eligibilityPolicy,customJournalList:customList||undefined,metricPreferences:metrics,constraintLocks:{dhet:true,apc:true,quartile:true,impactFactor:true,speed:false},quartileSelection:metrics.quartile?selectedQuartiles:[],impactFactorMin:metrics.impactFactor&&jifMin!==""?Number(jifMin):null,impactFactorMax:metrics.impactFactor&&jifMax!==""?Number(jifMax):null,excludeJournalIds:exclude,batchSize:5,explorerSize:50,llm}}
- async function run(exclude:string[],m:LlmMode){const r=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload(exclude,m))});const x=await r.json();if(!r.ok)throw new Error(x.error||"Analysis failed");return x as AnalysisResponse}
- async function submit(e:FormEvent){e.preventDefault();setBusy(true);setError("");try{if((eligibilityPolicy==="custom"||eligibilityPolicy==="dhet_or_custom")&&!customList)throw new Error("Upload a university/institution journal list before using this eligibility policy.");const x=await run([],mode==="local"?"none":mode);setData(x);setSeen(x.journals.map(j=>j.id));setBatch(1);setExplore(false);setDecisions(Object.fromEntries(x.journals.map(j=>[j.id,empty()])))}catch(e){setError(e instanceof Error?e.message:"Analysis failed")}finally{setBusy(false)}}
- async function next(){if(!data)return;setBusy(true);setError("");try{const ex=[...new Set([...seen,...data.journals.map(j=>j.id)])];const x=await run(ex,"none");setData(x);setSeen([...new Set([...ex,...x.journals.map(j=>j.id)])]);setBatch(n=>n+1)}catch(e){setError(e instanceof Error?e.message:"No more matching journals")}finally{setBusy(false)}}
- return <main className="shell"><header className="topbar"><div className="brand"><span className="brandMark">K</span><div><strong>Kagua</strong><small>Scientific publication intelligence</small></div></div><nav className="topActions"><span className="chip">Journal Hunter</span><Link href="/registry" className="textButton">DHET List</Link><Link href="/manual" className="textButton">Manual</Link><button type="button" className="iconButton" onClick={()=>setTheme(theme==="light"?"dark":"light")}>{theme==="light"?"Dark":"Light"}</button></nav></header><section className="hero"><div className="eyebrow">SCOPE-FIRST JOURNAL INTELLIGENCE</div><h1>Find the journal your science <em>belongs in.</em></h1><p>Use Journal Hunter for manuscript-specific recommendations, or browse the DHET List and its provenance directly.</p></section><section className="workspace"><form className="card inputCard" onSubmit={submit}><h2>1. Manuscript signal</h2><label>Manuscript title<input required value={title} onChange={e=>setTitle(e.target.value)}/></label><label>Abstract<textarea required rows={7} value={abstract} onChange={e=>setAbstract(e.target.value)}/></label><label>Keywords<input value={keywords} onChange={e=>setKeywords(e.target.value)} placeholder="ammonia decomposition, ceria, single-atom catalyst, DFT"/></label><div className="guardrail"><b>Scope guardrail ≥ 60</b><span>Out-of-scope journals are removed before JIF, Qx, APC or prestige can influence ranking.</span></div><div className="divider"/><h2>2. Eligibility authority</h2><label>Which journal list should Kagua enforce?<select value={eligibilityPolicy} onChange={e=>setEligibilityPolicy(e.target.value as EligibilityPolicy)}><option value="dhet">DHET only (default)</option><option value="custom">University/institution list only - overrides DHET</option><option value="dhet_or_custom">DHET OR uploaded list</option><option value="all">Open search - no list restriction</option></select></label><div className="guardrail"><b>DHET List</b><span>Browse the reference dataset, available JIF/Qx fields, ISSNs and provenance.</span><Link href="/registry" className="secondaryButton">Open DHET List</Link></div><label>Upload university/institution journal list <small className="hint">XLSX, XLS, CSV or TSV</small><input type="file" accept=".xlsx,.xls,.csv,.tsv,.txt" onChange={e=>uploadList(e.target.files?.[0]||null)}/></label>{listBusy&&<p className="evidence">Reading uploaded journal list...</p>}{customList&&<div className="scopePass"><span>Uploaded list ready</span><b>{customList.entries.length} journals</b><small>{customList.name}</small><button type="button" className="textButton" onClick={()=>{setCustomList(null);setEligibilityPolicy("dhet")}}>Remove</button></div>}<div className="divider"/><h2>3. Journal limits</h2><div className="metricToggles"><Metric label="APC" checked={metrics.apc} onChange={v=>setMetrics({...metrics,apc:v})}/><Metric label="Quartile" checked={metrics.quartile} onChange={v=>setMetrics({...metrics,quartile:v})}/><Metric label="Impact Factor" checked={metrics.impactFactor} onChange={v=>setMetrics({...metrics,impactFactor:v})}/></div>{metrics.apc&&<label>Maximum APC (USD)<input type="number" min="0" value={budget} onChange={e=>setBudget(Number(e.target.value))}/></label>}{metrics.quartile&&<label>Allowed quartile range<select value={quartilePreset} onChange={e=>setQuartilePreset(e.target.value)}>{quartileOptions.map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></label>}{metrics.impactFactor&&<div className="grid2"><label>Minimum JIF<input type="number" min="0" step="0.1" value={jifMin} onChange={e=>setJifMin(e.target.value)}/></label><label>Maximum JIF<input type="number" min="0" step="0.1" value={jifMax} onChange={e=>setJifMax(e.target.value)}/></label></div>}<label>Desired first decision <strong>{days} days</strong><input type="range" min="7" max="120" value={days} onChange={e=>setDays(Number(e.target.value))}/></label><div className="divider"/><h2>4. Intelligence engine</h2><div className="segmented four">{(["godmode","local","provider","none"]as LlmMode[]).map(x=><button type="button" key={x} className={mode===x?"active":""} onClick={()=>setMode(x)}>{x}</button>)}</div>{mode!=="none"&&mode!=="local"&&<div className="modelPanel"><select value={provider} onChange={e=>chooseProvider(e.target.value as LlmProviderId)}>{providers.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}</select><div className="keyActions"><a className="secondaryButton" href={p.keyUrl} target="_blank" rel="noreferrer">Get API key</a><button type="button" className="secondaryButton" onClick={()=>setKeyOpen(!keyOpen)}>Set API key</button></div>{keyOpen&&<input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="Session API key"/>}</div>}<button className="primary" disabled={busy}>{busy?"Running evidence pipeline...":"Hunt first 5 journals"}</button>{error&&<p className="error">{error}</p>}</form><div className="results">{!data?<div className="empty card"><h3>Two ways to explore journals</h3><p><b>Journal Hunter:</b> manuscript-specific Top 5 recommendations. <b>DHET List:</b> browse journals directly, including provenance and available JIF/Qx data.</p><Link href="/registry" className="secondaryButton">Browse DHET List</Link></div>:<><Funnel data={data}/>{data.llmRun&&<div className="card modelTrace"><div><span className="traceKicker">AI TRANSPARENCY</span><h3>{data.llmRun.selectedModel?`${data.llmRun.selectedProvider} - ${data.llmRun.selectedModel}`:"Deterministic scoring"}</h3><p>{data.llmRun.uncertaintyNote}</p></div></div>}<div className="rankHeader"><h2>Recommended now - Batch {batch}</h2><button type="button" className="secondaryButton" onClick={()=>setExplore(!explore)}>{explore?"Hide ranking":`Explore ranking (${data.rankingExplorer.length})`}</button></div>{data.journals.map((j,i)=><Journal key={j.id} j={j} rank={i+1} d={decisions[j.id]||empty()} set={x=>setDecisions(s=>({...s,[j.id]:{...(s[j.id]||empty()),...x}}))}/>)}{explore&&<Explorer rows={table} sort={sort} setSort={setSort}/>}<div className="card decisionFooter"><h3>No consensus?</h3><button type="button" className="nextBatch" disabled={busy} onClick={next}>Show next 5</button></div></>}</div></section></main>}
-function Funnel({data}:{data:AnalysisResponse}){const f=data.funnel,steps=[[f.relevantPublications,"Relevant publications"],[f.candidateJournals,"Candidate journals"],[f.eligibilityPassed,"Eligibility passed"],[f.scopePassed,"Scope passed"],[f.constraintsPassed,"Meet limits"],[f.ranked,"Ranked"],[f.recommended,"Top 5"]]as const;return <div className="card funnel"><div className="cardHead"><div><span className="step">AUDIT</span><h2>How Kagua narrowed the search</h2></div></div><div className="funnelSteps">{steps.map(([n,l],i)=><div key={l}><b>{n}</b><span>{l}</span>{i<steps.length-1&&<i>→</i>}</div>)}</div><p>Relevant publications provide scope evidence. Journals are the entities being ranked.</p></div>}
-function Explorer({rows,sort,setSort}:{rows:JournalScore[];sort:keyof JournalScore;setSort:(x:keyof JournalScore)=>void}){return <div className="card explorer"><div className="rankHeader"><h2>Top {rows.length} ranking explorer</h2><label>Sort by<select value={String(sort)} onChange={e=>setSort(e.target.value as keyof JournalScore)}><option value="kpos">KPOS</option><option value="trilemma">KTS</option><option value="fit">Scope fit</option><option value="quality">Quality</option><option value="impactFactor">JIF</option></select></label></div><div className="tableWrap"><table><thead><tr><th>Rank</th><th>Journal</th><th>Status</th><th>Fit</th><th>Qx</th><th>JIF</th><th>APC</th><th>KTS</th><th>KPOS</th><th>DHET</th></tr></thead><tbody>{rows.map(j=><tr key={j.id}><td>{j.rank}</td><td><b>{j.name}</b></td><td>{j.batchLabel}</td><td>{j.fit}</td><td>{j.quartile}</td><td>{j.impactFactor??"-"}</td><td>{j.apcDisplay||"-"}</td><td>{j.trilemma}</td><td><b>{j.kpos}</b></td><td>{j.dhet==="Recognised"?"Yes":"No"}</td></tr>)}</tbody></table></div></div>}
-function Metric({label,checked,onChange}:{label:string;checked:boolean;onChange:(v:boolean)=>void}){return <button type="button" className={`metricToggle ${checked?"on":""}`} onClick={()=>onChange(!checked)}><b>{label}</b><i>{checked?"ON":"OFF"}</i></button>}
-function Journal({j,rank,d,set}:{j:JournalScore;rank:number;d:Decision;set:(x:Partial<Decision>)=>void}){return <article className="journal card"><div className="rank">0{rank}</div><div className="journalMain"><div className="journalTitle"><div><h3>{j.name}</h3><p>{j.publisher} - {j.dhet}</p></div><span className="label good">{j.label}</span></div><div className="scopePass"><span>Scope gate passed</span><b>{j.fit}/100</b></div><div className="scoreRow"><Score n="KPOS" v={j.kpos}/><Score n="KTS" v={j.trilemma}/><Score n="Scope" v={j.fit}/><Score n="Quality" v={j.quality}/></div><div className="facts"><span>Qx <b>{j.quartile}</b></span><span>JIF <b>{j.impactFactor??"Not verified"}</b></span><span>APC <b>{j.apcDisplay||"Unknown"}</b></span><span>Relevant publications <b>{j.matchedWorks}</b></span></div><p className="why">{j.rationale}</p><div className="voteGrid"><Vote label="Researcher" v={d.researcher} onChange={researcher=>set({researcher})}/><Vote label="Supervisor" v={d.supervisor} onChange={supervisor=>set({supervisor})}/></div></div></article>}
-function Vote({label,v,onChange}:{label:string;v:Vote;onChange:(v:Vote)=>void}){return <div className="voteControl"><span>{label}</span><div><button type="button" className={`approve ${v==="approve"?"active":""}`} onClick={()=>onChange(v==="approve"?"undecided":"approve")}>Suitable</button><button type="button" className={`reject ${v==="reject"?"active":""}`} onClick={()=>onChange(v==="reject"?"undecided":"reject")}>Not suitable</button></div></div>}
-function Score({n,v}:{n:string;v:number}){return <div className="score"><span>{n}</span><b>{v}</b><i><em style={{width:`${v}%`}}/></i></div>}
+
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { parseCustomJournalList } from "@/lib/kagua/custom-list";
+import type {
+  AnalysisResponse,
+  CustomJournalList,
+  EligibilityPolicy,
+  EvidenceItem,
+  JournalScore,
+  LlmMode,
+  LlmProviderId,
+  MetricPreferences,
+  Quartile,
+  ScoreContribution,
+  TrilemmaNode,
+} from "@/lib/kagua/types";
+
+type Theme = "light" | "dark";
+type Vote = "undecided" | "approve" | "reject";
+type Decision = { researcher: Vote; supervisor: Vote; note: string };
+type SortKey = "kpos" | "trilemma" | "fit" | "quality" | "affordability" | "speed" | "impactFactor";
+type Draft = {
+  title: string;
+  abstract: string;
+  keywords: string;
+  budget: number;
+  days: number;
+  metrics: MetricPreferences;
+  quartilePreset: string;
+  jifMin: string;
+  jifMax: string;
+  eligibilityPolicy: EligibilityPolicy;
+  mode: LlmMode;
+  provider: LlmProviderId;
+  model: string;
+  baseUrl: string;
+  speedLocked: boolean;
+};
+
+const DRAFT_KEY = "kagua.hunter.draft.v2";
+
+const providers = [
+  {
+    id: "deepseek" as LlmProviderId,
+    label: "DeepSeek",
+    model: "deepseek-chat",
+    baseUrl: "https://api.deepseek.com",
+    keyUrl: "https://platform.deepseek.com/api_keys",
+  },
+  {
+    id: "openai" as LlmProviderId,
+    label: "OpenAI",
+    model: "gpt-5.6-sol",
+    baseUrl: "https://api.openai.com/v1",
+    keyUrl: "https://platform.openai.com/api-keys",
+  },
+  {
+    id: "openrouter" as LlmProviderId,
+    label: "OpenRouter",
+    model: "deepseek/deepseek-chat",
+    baseUrl: "https://openrouter.ai/api/v1",
+    keyUrl: "https://openrouter.ai/keys",
+  },
+  {
+    id: "custom" as LlmProviderId,
+    label: "Custom",
+    model: "",
+    baseUrl: "",
+    keyUrl: "",
+  },
+];
+
+const quartileOptions: { value: string; label: string; quartiles: Quartile[] }[] = [
+  { value: "any", label: "Any quartile", quartiles: [] },
+  { value: "Q1", label: "Q1 only", quartiles: ["Q1"] },
+  { value: "Q2", label: "Q2 only", quartiles: ["Q2"] },
+  { value: "Q3", label: "Q3 only", quartiles: ["Q3"] },
+  { value: "Q4", label: "Q4 only", quartiles: ["Q4"] },
+  { value: "Q1-Q2", label: "Q1-Q2", quartiles: ["Q1", "Q2"] },
+  { value: "Q2-Q3", label: "Q2-Q3", quartiles: ["Q2", "Q3"] },
+  { value: "Q3-Q4", label: "Q3-Q4", quartiles: ["Q3", "Q4"] },
+  { value: "Q1-Q3", label: "Q1-Q3", quartiles: ["Q1", "Q2", "Q3"] },
+  { value: "Q2-Q4", label: "Q2-Q4", quartiles: ["Q2", "Q3", "Q4"] },
+  { value: "Q1-Q4", label: "Q1-Q4", quartiles: ["Q1", "Q2", "Q3", "Q4"] },
+];
+
+const policyLabels: Record<EligibilityPolicy, string> = {
+  dhet: "DHET only",
+  custom: "Institution list",
+  dhet_or_custom: "DHET or institution",
+  all: "Open search",
+};
+
+const modeLabels: Record<LlmMode, string> = {
+  godmode: "Godmode",
+  local: "Local",
+  provider: "Provider",
+  none: "Scoring",
+};
+
+const emptyDecision = (): Decision => ({ researcher: "undecided", supervisor: "undecided", note: "" });
+
+function readDraft() {
+  if (typeof window === "undefined") return {} as Partial<Draft>;
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? (JSON.parse(raw) as Partial<Draft>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export default function Home() {
+  const [draft] = useState<Partial<Draft>>(() => readDraft());
+  const [theme, setTheme] = useState<Theme>("light");
+  const [title, setTitle] = useState(draft.title || "");
+  const [abstract, setAbstract] = useState(draft.abstract || "");
+  const [keywords, setKeywords] = useState(draft.keywords || "");
+  const [budget, setBudget] = useState(draft.budget ?? 2500);
+  const [days, setDays] = useState(draft.days ?? 45);
+  const [speedLocked, setSpeedLocked] = useState(Boolean(draft.speedLocked));
+  const [metrics, setMetrics] = useState<MetricPreferences>(draft.metrics || { apc: true, quartile: true, impactFactor: true });
+  const [quartilePreset, setQuartilePreset] = useState(draft.quartilePreset || "any");
+  const [jifMin, setJifMin] = useState(draft.jifMin || "");
+  const [jifMax, setJifMax] = useState(draft.jifMax || "");
+  const [eligibilityPolicy, setEligibilityPolicy] = useState<EligibilityPolicy>(draft.eligibilityPolicy || "dhet");
+  const [customList, setCustomList] = useState<CustomJournalList | null>(null);
+  const [listBusy, setListBusy] = useState(false);
+  const [mode, setMode] = useState<LlmMode>(draft.mode || "godmode");
+  const [provider, setProvider] = useState<LlmProviderId>(draft.provider || "deepseek");
+  const [apiKey, setApiKey] = useState("");
+  const [keyOpen, setKeyOpen] = useState(false);
+  const [model, setModel] = useState(draft.model || "deepseek-chat");
+  const [baseUrl, setBaseUrl] = useState(draft.baseUrl || "https://api.deepseek.com");
+  const [data, setData] = useState<AnalysisResponse | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [seen, setSeen] = useState<string[]>([]);
+  const [batch, setBatch] = useState(1);
+  const [decisions, setDecisions] = useState<Record<string, Decision>>({});
+  const [view, setView] = useState<"recommendations" | "explorer">("recommendations");
+  const [sort, setSort] = useState<SortKey>("kpos");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
+  useEffect(() => {
+    const draft: Draft = {
+      title,
+      abstract,
+      keywords,
+      budget,
+      days,
+      metrics,
+      quartilePreset,
+      jifMin,
+      jifMax,
+      eligibilityPolicy,
+      mode,
+      provider,
+      model,
+      baseUrl,
+      speedLocked,
+    };
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    } catch {}
+  }, [
+    abstract,
+    baseUrl,
+    budget,
+    days,
+    eligibilityPolicy,
+    jifMax,
+    jifMin,
+    keywords,
+    metrics,
+    mode,
+    model,
+    provider,
+    quartilePreset,
+    speedLocked,
+    title,
+  ]);
+
+  const p = providers.find((x) => x.id === provider) || providers[0];
+  const keywordList = useMemo(() => keywords.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean), [keywords]);
+  const selectedQuartiles = quartileOptions.find((x) => x.value === quartilePreset)?.quartiles || [];
+  const abstractWords = useMemo(() => abstract.trim().split(/\s+/).filter(Boolean).length, [abstract]);
+  const readiness = useMemo(() => {
+    let score = 0;
+    if (title.trim().length > 12) score += 32;
+    if (abstractWords >= 80) score += 38;
+    if (keywordList.length >= 3) score += 16;
+    if (eligibilityPolicy === "dhet" || customList || eligibilityPolicy === "all") score += 14;
+    return Math.min(100, score);
+  }, [abstractWords, customList, eligibilityPolicy, keywordList.length, title]);
+  const table = useMemo(
+    () => [...(data?.rankingExplorer || [])].sort((a, b) => Number(b[sort] || 0) - Number(a[sort] || 0)),
+    [data, sort],
+  );
+  const selectedJournals = useMemo(
+    () => selectedIds.map((id) => data?.journals.find((j) => j.id === id)).filter(Boolean) as JournalScore[],
+    [data?.journals, selectedIds],
+  );
+  const consensusJournal = useMemo(
+    () => data?.journals.find((j) => decisions[j.id]?.researcher === "approve" && decisions[j.id]?.supervisor === "approve"),
+    [data?.journals, decisions],
+  );
+  const decisionCounts = useMemo(() => {
+    const rows = data?.journals || [];
+    return rows.reduce(
+      (acc, journal) => {
+        const d = decisions[journal.id] || emptyDecision();
+        if (d.researcher === "approve" || d.supervisor === "approve") acc.signals += 1;
+        if (d.researcher === "reject" && d.supervisor === "reject") acc.rejected += 1;
+        if (d.researcher === "undecided" || d.supervisor === "undecided") acc.open += 1;
+        return acc;
+      },
+      { signals: 0, rejected: 0, open: 0 },
+    );
+  }, [data?.journals, decisions]);
+
+  function chooseProvider(id: LlmProviderId) {
+    setProvider(id);
+    const nextProvider = providers.find((v) => v.id === id);
+    if (nextProvider) {
+      setModel(nextProvider.model);
+      setBaseUrl(nextProvider.baseUrl);
+    }
+  }
+
+  function clearDraft() {
+    setTitle("");
+    setAbstract("");
+    setKeywords("");
+    setBudget(2500);
+    setDays(45);
+    setSpeedLocked(false);
+    setMetrics({ apc: true, quartile: true, impactFactor: true });
+    setQuartilePreset("any");
+    setJifMin("");
+    setJifMax("");
+    setEligibilityPolicy("dhet");
+    setCustomList(null);
+    setData(null);
+    setSeen([]);
+    setBatch(1);
+    setDecisions({});
+    setSelectedIds([]);
+    setError("");
+  }
+
+  function fillDemo() {
+    setTitle("Single-atom catalysts on ceria for low-temperature ammonia decomposition");
+    setAbstract(
+      "This manuscript reports density functional theory and microkinetic analysis of transition-metal single atom catalysts anchored on defective ceria surfaces for low-temperature ammonia decomposition. The study compares nitrogen vacancy formation, hydrogen spillover, N-H bond activation barriers, and catalyst stability across multiple dopants. The work combines mechanistic modelling with materials screening to identify affordable catalyst motifs for green hydrogen carrier systems.",
+    );
+    setKeywords("ammonia decomposition, ceria, single-atom catalyst, DFT, green hydrogen");
+    setBudget(1800);
+    setDays(50);
+  }
+
+  async function uploadList(file: File | null) {
+    if (!file) return;
+    setListBusy(true);
+    setError("");
+    try {
+      const parsed = await parseCustomJournalList(file);
+      if (!parsed.entries.length) throw new Error("No journal titles or ISSNs were detected in that file.");
+      setCustomList(parsed);
+      setEligibilityPolicy("custom");
+    } catch (e) {
+      setCustomList(null);
+      setError(e instanceof Error ? e.message : "Could not parse the journal list.");
+    } finally {
+      setListBusy(false);
+    }
+  }
+
+  function payload(exclude: string[], selectedMode: LlmMode) {
+    const llm =
+      selectedMode === "provider"
+        ? { mode: selectedMode, provider, apiKey, model, baseUrl }
+        : selectedMode === "godmode" && apiKey
+          ? { mode: selectedMode, providers: [{ id: provider, apiKey, model, baseUrl, enabled: true }] }
+          : { mode: selectedMode };
+
+    return {
+      title,
+      abstract,
+      keywords: keywordList,
+      budgetUsd: budget,
+      desiredDays: days,
+      dhetOnly: eligibilityPolicy === "dhet",
+      eligibilityPolicy,
+      customJournalList: customList || undefined,
+      metricPreferences: metrics,
+      constraintLocks: { dhet: true, apc: true, quartile: true, impactFactor: true, speed: speedLocked },
+      quartileSelection: metrics.quartile ? selectedQuartiles : [],
+      impactFactorMin: metrics.impactFactor && jifMin !== "" ? Number(jifMin) : null,
+      impactFactorMax: metrics.impactFactor && jifMax !== "" ? Number(jifMax) : null,
+      excludeJournalIds: exclude,
+      batchSize: 5,
+      explorerSize: 50,
+      llm,
+    };
+  }
+
+  async function run(exclude: string[], selectedMode: LlmMode) {
+    const response = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload(exclude, selectedMode)),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "Analysis failed");
+    return body as AnalysisResponse;
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      if ((eligibilityPolicy === "custom" || eligibilityPolicy === "dhet_or_custom") && !customList) {
+        throw new Error("Upload a university or institution journal list before using this eligibility policy.");
+      }
+      const response = await run([], mode === "local" ? "none" : mode);
+      setData(response);
+      setSeen(response.journals.map((j) => j.id));
+      setBatch(1);
+      setView("recommendations");
+      setSelectedIds(response.journals.slice(0, 2).map((j) => j.id));
+      setDecisions(Object.fromEntries(response.journals.map((j) => [j.id, emptyDecision()])));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Analysis failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function next() {
+    if (!data) return;
+    setBusy(true);
+    setError("");
+    try {
+      const exclude = [...new Set([...seen, ...data.journals.map((j) => j.id)])];
+      const response = await run(exclude, "none");
+      setData(response);
+      setSeen([...new Set([...exclude, ...response.journals.map((j) => j.id)])]);
+      setSelectedIds(response.journals.slice(0, 2).map((j) => j.id));
+      setDecisions((state) => ({
+        ...state,
+        ...Object.fromEntries(response.journals.map((j) => [j.id, state[j.id] || emptyDecision()])),
+      }));
+      setBatch((n) => n + 1);
+      setView("recommendations");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No more matching journals");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id].slice(-4)));
+  }
+
+  const canSubmit = Boolean(title.trim() && abstract.trim() && !busy);
+
+  return (
+    <main className="shell hunterShell">
+      <section className="hero productHero">
+        <div>
+          <span className="eyebrow">SCOPE-FIRST PUBLICATION INTELLIGENCE</span>
+          <h1>
+            Find the journal your science <em>belongs in.</em>
+          </h1>
+          <p>
+            Kagua turns a manuscript into an auditable journal shortlist: evidence first, eligibility explicit, and
+            researcher-supervisor decisions kept visible.
+          </p>
+        </div>
+        <div className="heroDeck" aria-label="Kagua operating status">
+          <HeroMetric label="Authority" value={policyLabels[eligibilityPolicy]} />
+          <HeroMetric label="Readiness" value={`${readiness}%`} />
+          <HeroMetric label="Batch" value={data ? `Top ${data.journals.length}` : "Ready"} />
+          <button type="button" className="heroTheme" onClick={() => setTheme(theme === "light" ? "dark" : "light")}>
+            {theme === "light" ? "Dark mode" : "Light mode"}
+          </button>
+        </div>
+      </section>
+
+      <section className="workspace hunterWorkspace">
+        <form className="card inputCard workflowCard" onSubmit={submit}>
+          <div className="workflowProgress" aria-label="Workflow progress">
+            <StepPill label="Manuscript" active={readiness >= 32} />
+            <StepPill label="Authority" active={eligibilityPolicy === "dhet" || eligibilityPolicy === "all" || Boolean(customList)} />
+            <StepPill label="Limits" active={metrics.apc || metrics.quartile || metrics.impactFactor} />
+            <StepPill label="Review" active={Boolean(data)} />
+          </div>
+
+          <section className="formSection">
+            <div className="sectionTitle">
+              <span>01</span>
+              <h2>Manuscript signal</h2>
+            </div>
+            <label>
+              Manuscript title
+              <input required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Paste the working title" />
+            </label>
+            <label>
+              Abstract
+              <textarea
+                required
+                rows={7}
+                value={abstract}
+                onChange={(e) => setAbstract(e.target.value)}
+                placeholder="Paste the abstract or a structured summary"
+              />
+            </label>
+            <label>
+              Keywords
+              <input
+                value={keywords}
+                onChange={(e) => setKeywords(e.target.value)}
+                placeholder="ammonia decomposition, ceria, DFT"
+              />
+            </label>
+            <div className="signalStrip">
+              <SmallMetric label="Words" value={abstractWords.toLocaleString()} />
+              <SmallMetric label="Keywords" value={keywordList.length.toString()} />
+              <SmallMetric label="Scope floor" value="60/100" />
+            </div>
+          </section>
+
+          <section className="formSection">
+            <div className="sectionTitle">
+              <span>02</span>
+              <h2>Eligibility authority</h2>
+            </div>
+            <label>
+              Journal list policy
+              <select value={eligibilityPolicy} onChange={(e) => setEligibilityPolicy(e.target.value as EligibilityPolicy)}>
+                <option value="dhet">DHET only (default)</option>
+                <option value="custom">University/institution list only</option>
+                <option value="dhet_or_custom">DHET OR uploaded list</option>
+                <option value="all">Open search</option>
+              </select>
+            </label>
+            <div className="authorityPanel">
+              <div>
+                <b>{policyLabels[eligibilityPolicy]}</b>
+                <span>
+                  {customList
+                    ? `${customList.entries.length.toLocaleString()} uploaded records available`
+                    : "Official DHET recognition remains the default gate."}
+                </span>
+              </div>
+              <Link href="/registry" className="secondaryButton">
+                DHET list
+              </Link>
+            </div>
+            <label>
+              Upload institution journal list
+              <small className="hint">XLSX, XLS, CSV, TSV or TXT</small>
+              <input type="file" accept=".xlsx,.xls,.csv,.tsv,.txt" onChange={(e) => uploadList(e.target.files?.[0] || null)} />
+            </label>
+            {listBusy && <p className="evidence">Reading uploaded journal list...</p>}
+            {customList && (
+              <div className="uploadSummary">
+                <span>{customList.name}</span>
+                <b>{customList.entries.length.toLocaleString()} journals</b>
+                <button
+                  type="button"
+                  className="textButton"
+                  onClick={() => {
+                    setCustomList(null);
+                    setEligibilityPolicy("dhet");
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            )}
+          </section>
+
+          <section className="formSection">
+            <div className="sectionTitle">
+              <span>03</span>
+              <h2>Journal limits</h2>
+            </div>
+            <div className="metricToggles">
+              <Metric label="APC" checked={metrics.apc} onChange={(v) => setMetrics({ ...metrics, apc: v })} />
+              <Metric label="Quartile" checked={metrics.quartile} onChange={(v) => setMetrics({ ...metrics, quartile: v })} />
+              <Metric
+                label="Impact Factor"
+                checked={metrics.impactFactor}
+                onChange={(v) => setMetrics({ ...metrics, impactFactor: v })}
+              />
+            </div>
+            {metrics.apc && (
+              <label>
+                Maximum APC (USD)
+                <input type="number" min="0" value={budget} onChange={(e) => setBudget(Number(e.target.value))} />
+              </label>
+            )}
+            {metrics.quartile && (
+              <label>
+                Allowed quartile range
+                <select value={quartilePreset} onChange={(e) => setQuartilePreset(e.target.value)}>
+                  {quartileOptions.map((x) => (
+                    <option key={x.value} value={x.value}>
+                      {x.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {metrics.impactFactor && (
+              <div className="grid2">
+                <label>
+                  Minimum JIF
+                  <input type="number" min="0" step="0.1" value={jifMin} onChange={(e) => setJifMin(e.target.value)} />
+                </label>
+                <label>
+                  Maximum JIF
+                  <input type="number" min="0" step="0.1" value={jifMax} onChange={(e) => setJifMax(e.target.value)} />
+                </label>
+              </div>
+            )}
+            <label>
+              Desired first decision
+              <span className="rangeMeta">{days} days</span>
+              <input type="range" min="7" max="120" value={days} onChange={(e) => setDays(Number(e.target.value))} />
+            </label>
+            <label className="checkRow lockRow">
+              <input type="checkbox" checked={speedLocked} onChange={(e) => setSpeedLocked(e.target.checked)} />
+              <span>
+                <b>Use decision time as a hard filter</b>
+                <small>Otherwise speed remains a pathway signal, not an exclusion rule.</small>
+              </span>
+            </label>
+          </section>
+
+          <section className="formSection">
+            <div className="sectionTitle">
+              <span>04</span>
+              <h2>Intelligence engine</h2>
+            </div>
+            <div className="segmented four engineModes" aria-label="LLM mode">
+              {(["godmode", "local", "provider", "none"] as LlmMode[]).map((x) => (
+                <button type="button" key={x} className={mode === x ? "active" : ""} onClick={() => setMode(x)}>
+                  {modeLabels[x]}
+                </button>
+              ))}
+            </div>
+            {mode !== "none" && mode !== "local" && (
+              <div className="modelPanel">
+                <div className="providerGrid">
+                  <label>
+                    Provider
+                    <select value={provider} onChange={(e) => chooseProvider(e.target.value as LlmProviderId)}>
+                      {providers.map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Model
+                    <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="Model name" />
+                  </label>
+                </div>
+                <label>
+                  Base URL
+                  <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="OpenAI-compatible endpoint" />
+                </label>
+                <div className="keyActions">
+                  {p.keyUrl ? (
+                    <a className="secondaryButton" href={p.keyUrl} target="_blank" rel="noreferrer">
+                      Get key
+                    </a>
+                  ) : (
+                    <span className="secondaryButton mutedButton">Custom endpoint</span>
+                  )}
+                  <button type="button" className="secondaryButton" onClick={() => setKeyOpen(!keyOpen)}>
+                    {keyOpen ? "Hide key" : "Set key"}
+                  </button>
+                </div>
+                {keyOpen && (
+                  <input
+                    className="passwordField"
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="Session API key"
+                  />
+                )}
+              </div>
+            )}
+          </section>
+
+          <div className="formFooter">
+            <button className="primary" disabled={!canSubmit}>
+              {busy ? "Running evidence pipeline..." : "Hunt first 5 journals"}
+            </button>
+            <div className="inlineActions">
+              <button type="button" className="textButton" onClick={fillDemo}>
+                Fill sample
+              </button>
+              <button type="button" className="textButton" onClick={clearDraft}>
+                Clear
+              </button>
+            </div>
+            {error && <p className="error">{error}</p>}
+          </div>
+        </form>
+
+        <section className="results resultStack" aria-live="polite">
+          {!data ? (
+            <LaunchPanel
+              readiness={readiness}
+              abstractWords={abstractWords}
+              keywordCount={keywordList.length}
+              policy={policyLabels[eligibilityPolicy]}
+              busy={busy}
+              onDemo={fillDemo}
+            />
+          ) : (
+            <>
+              <RunSnapshot data={data} batch={batch} consensusJournal={consensusJournal} counts={decisionCounts} />
+              <Funnel data={data} />
+              <ComparisonTray journals={selectedJournals} onRemove={toggleSelected} />
+              <div className="decisionToolbar">
+                <div>
+                  <span className="eyebrow">DECISION ROOM</span>
+                  <h2>Batch {batch}: recommended now</h2>
+                </div>
+                <div className="tabs" role="tablist" aria-label="Result views">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={view === "recommendations"}
+                    className={view === "recommendations" ? "active" : ""}
+                    onClick={() => setView("recommendations")}
+                  >
+                    Cards
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={view === "explorer"}
+                    className={view === "explorer" ? "active" : ""}
+                    onClick={() => setView("explorer")}
+                  >
+                    Explorer ({data.rankingExplorer.length})
+                  </button>
+                </div>
+              </div>
+              {view === "recommendations" ? (
+                <>
+                  {data.journals.map((journal, index) => (
+                    <Journal
+                      key={journal.id}
+                      journal={journal}
+                      rank={index + 1}
+                      decision={decisions[journal.id] || emptyDecision()}
+                      selected={selectedIds.includes(journal.id)}
+                      onToggleSelected={() => toggleSelected(journal.id)}
+                      onDecision={(patch) =>
+                        setDecisions((state) => ({
+                          ...state,
+                          [journal.id]: { ...(state[journal.id] || emptyDecision()), ...patch },
+                        }))
+                      }
+                    />
+                  ))}
+                </>
+              ) : (
+                <Explorer rows={table} sort={sort} setSort={setSort} />
+              )}
+              <div className="card decisionFooter">
+                <div>
+                  <span className="eyebrow">NEXT ACTION</span>
+                  <h3>{consensusJournal ? `Consensus emerging: ${consensusJournal.name}` : "No consensus yet"}</h3>
+                  <p>
+                    {data.decisionRun.hasMore
+                      ? `${data.decisionRun.eligiblePoolSize.toLocaleString()} eligible journals remain in this evidence pool.`
+                      : "Kagua has exhausted the current eligible evidence pool."}
+                  </p>
+                </div>
+                <button type="button" className="nextBatch" disabled={busy || !data.decisionRun.hasMore} onClick={next}>
+                  {busy ? "Loading next batch..." : "Show next 5"}
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+      </section>
+    </main>
+  );
+}
+
+function HeroMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="heroMetric">
+      <span>{label}</span>
+      <b>{value}</b>
+    </div>
+  );
+}
+
+function StepPill({ label, active }: { label: string; active: boolean }) {
+  return <span className={`stepPill ${active ? "active" : ""}`}>{label}</span>;
+}
+
+function SmallMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="smallMetric">
+      <span>{label}</span>
+      <b>{value}</b>
+    </div>
+  );
+}
+
+function Metric({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <button type="button" className={`metricToggle ${checked ? "on" : ""}`} aria-pressed={checked} onClick={() => onChange(!checked)}>
+      <b>{label}</b>
+      <i>{checked ? "ON" : "OFF"}</i>
+    </button>
+  );
+}
+
+function LaunchPanel({
+  readiness,
+  abstractWords,
+  keywordCount,
+  policy,
+  busy,
+  onDemo,
+}: {
+  readiness: number;
+  abstractWords: number;
+  keywordCount: number;
+  policy: string;
+  busy: boolean;
+  onDemo: () => void;
+}) {
+  return (
+    <div className={`card launchPanel ${busy ? "isBusy" : ""}`}>
+      <div className="launchCopy">
+        <span className="eyebrow">READY WHEN YOUR MANUSCRIPT IS</span>
+        <h2>Evidence, eligibility and judgement in one workspace.</h2>
+        <p>
+          The recommendation room will show the shortlist, decision notes, score balance, eligibility explanation and
+          source ledger after analysis.
+        </p>
+        <button type="button" className="secondaryButton sampleButton" onClick={onDemo}>
+          Try sample manuscript
+        </button>
+      </div>
+      <div className="readinessPanel">
+        <div className="readinessDial" style={{ ["--ready" as string]: `${readiness}%` }}>
+          <b>{readiness}%</b>
+          <span>Ready</span>
+        </div>
+        <div className="readinessGrid">
+          <SmallMetric label="Abstract" value={`${abstractWords} words`} />
+          <SmallMetric label="Keywords" value={String(keywordCount)} />
+          <SmallMetric label="Authority" value={policy} />
+        </div>
+      </div>
+      <div className="routeLine" aria-hidden="true">
+        <span>Manuscript</span>
+        <span>Evidence</span>
+        <span>Eligibility</span>
+        <span>Top 5</span>
+      </div>
+    </div>
+  );
+}
+
+function RunSnapshot({
+  data,
+  batch,
+  consensusJournal,
+  counts,
+}: {
+  data: AnalysisResponse;
+  batch: number;
+  consensusJournal?: JournalScore;
+  counts: { signals: number; rejected: number; open: number };
+}) {
+  return (
+    <section className="card runSnapshot">
+      <div className="snapshotLead">
+        <span className="eyebrow">RUN SNAPSHOT</span>
+        <h2>{data.fingerprint.field}</h2>
+        <p>{data.editorialBoard.verdict}</p>
+      </div>
+      <div className="snapshotGrid">
+        <SmallMetric label="Batch" value={String(batch)} />
+        <SmallMetric label="Eligible pool" value={data.decisionRun.eligiblePoolSize.toLocaleString()} />
+        <SmallMetric label="Policy" value={policyLabels[data.eligibilityRun.policy]} />
+        <SmallMetric label="Open decisions" value={String(counts.open)} />
+      </div>
+      <div className="boardColumns">
+        <BoardList title="Strengths" items={data.editorialBoard.strengths} />
+        <BoardList title="Concerns" items={data.editorialBoard.concerns} />
+        <BoardList title="Actions" items={data.editorialBoard.actions} />
+      </div>
+      <div className={consensusJournal ? "consensusBanner active" : "consensusBanner"}>
+        <b>{consensusJournal ? "Consensus signal" : "Consensus monitor"}</b>
+        <span>
+          {consensusJournal
+            ? `${consensusJournal.name} has approval from both reviewer roles.`
+            : `${counts.signals} positive signal(s), ${counts.rejected} fully rejected journal(s).`}
+        </span>
+      </div>
+      <div className="runMeta">
+        <span>{data.evidenceRun.candidateSources.join(" + ") || "Evidence sources pending"}</span>
+        <span>{data.evidenceRun.dhetEdition}</span>
+        <span>{data.llmRun?.selectedModel || modeLabels[data.llmModeUsed]}</span>
+      </div>
+    </section>
+  );
+}
+
+function BoardList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="boardList">
+      <b>{title}</b>
+      {items.slice(0, 3).map((item) => (
+        <span key={item}>{item}</span>
+      ))}
+    </div>
+  );
+}
+
+function Funnel({ data }: { data: AnalysisResponse }) {
+  const f = data.funnel;
+  const steps = [
+    [f.relevantPublications, "Relevant publications"],
+    [f.candidateJournals, "Candidate journals"],
+    [f.eligibilityPassed, "Eligibility passed"],
+    [f.scopePassed, "Scope passed"],
+    [f.constraintsPassed, "Meet limits"],
+    [f.ranked, "Ranked"],
+    [f.recommended, "Top 5"],
+  ] as const;
+
+  return (
+    <div className="card funnel">
+      <div className="cardHead">
+        <div>
+          <span className="step">AUDIT</span>
+          <h2>Evidence funnel</h2>
+        </div>
+        <span className="statusPill">{data.evidenceRun.liveEvidence ? "Live evidence" : "Cached evidence"}</span>
+      </div>
+      <div className="funnelSteps">
+        {steps.map(([n, label]) => (
+          <div key={label}>
+            <b>{n.toLocaleString()}</b>
+            <span>{label}</span>
+          </div>
+        ))}
+      </div>
+      <p>{data.evidenceNote}</p>
+    </div>
+  );
+}
+
+function ComparisonTray({ journals, onRemove }: { journals: JournalScore[]; onRemove: (id: string) => void }) {
+  return (
+    <section className="card comparisonTray">
+      <div className="cardHead">
+        <div>
+          <span className="step">COMPARE</span>
+          <h2>Shortlist lens</h2>
+        </div>
+        <span className="statusPill">{journals.length}/4 selected</span>
+      </div>
+      {journals.length ? (
+        <div className="compareGrid">
+          {journals.map((journal) => (
+            <div className="compareItem" key={journal.id}>
+              <button type="button" className="removeCompare" onClick={() => onRemove(journal.id)} aria-label={`Remove ${journal.name}`}>
+                x
+              </button>
+              <b>{journal.name}</b>
+              <div className="compareScores">
+                <SmallMetric label="KPOS" value={String(journal.kpos)} />
+                <SmallMetric label="Fit" value={String(journal.fit)} />
+                <SmallMetric label="Qx" value={journal.quartile} />
+              </div>
+              <span>{journal.eligibility?.explanation || journal.dhet}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mutedCopy">Select journals from the batch to compare fit, pathway score and eligibility side by side.</p>
+      )}
+    </section>
+  );
+}
+
+function Explorer({ rows, sort, setSort }: { rows: JournalScore[]; sort: SortKey; setSort: (x: SortKey) => void }) {
+  return (
+    <div className="card explorer">
+      <div className="rankHeader">
+        <div>
+          <span className="eyebrow">RANKING EXPLORER</span>
+          <h2>Top {rows.length} candidates</h2>
+        </div>
+        <label>
+          Sort by
+          <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
+            <option value="kpos">KPOS</option>
+            <option value="trilemma">KTS</option>
+            <option value="fit">Scope fit</option>
+            <option value="quality">Quality</option>
+            <option value="affordability">Affordability</option>
+            <option value="speed">Speed</option>
+            <option value="impactFactor">JIF</option>
+          </select>
+        </label>
+      </div>
+      <div className="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Journal</th>
+              <th>Status</th>
+              <th>Fit</th>
+              <th>Qx</th>
+              <th>JIF</th>
+              <th>APC</th>
+              <th>KTS</th>
+              <th>KPOS</th>
+              <th>DHET</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((journal) => (
+              <tr key={journal.id}>
+                <td>{journal.rank}</td>
+                <td>
+                  <b>{journal.name}</b>
+                  <small className="rowMeta">{journal.publisher}</small>
+                </td>
+                <td>{journal.batchLabel}</td>
+                <td>{journal.fit}</td>
+                <td>{journal.quartile}</td>
+                <td>{journal.impactFactor ?? "-"}</td>
+                <td>{journal.apcDisplay || "-"}</td>
+                <td>{journal.trilemma}</td>
+                <td>
+                  <b>{journal.kpos}</b>
+                </td>
+                <td>{journal.dhet === "Recognised" ? "Yes" : "No"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function Journal({
+  journal,
+  rank,
+  decision,
+  selected,
+  onToggleSelected,
+  onDecision,
+}: {
+  journal: JournalScore;
+  rank: number;
+  decision: Decision;
+  selected: boolean;
+  onToggleSelected: () => void;
+  onDecision: (x: Partial<Decision>) => void;
+}) {
+  const consensus = decision.researcher === "approve" && decision.supervisor === "approve";
+  const rejected = decision.researcher === "reject" && decision.supervisor === "reject";
+
+  return (
+    <article className={`journal card ${selected ? "selectedJournal" : ""}`}>
+      <div className="journalRankBadge">
+        <span>#{rank}</span>
+        <b>{journal.kpos}</b>
+        <small>KPOS</small>
+      </div>
+      <div className="journalMain">
+        <div className="journalTitle journalHeader">
+          <div>
+            <span className="eyebrow">{journal.label}</span>
+            <h3>{journal.name}</h3>
+            <p>{journal.publisher}</p>
+          </div>
+          <div className="journalActions">
+            <button type="button" className={selected ? "secondaryButton activeCompare" : "secondaryButton"} onClick={onToggleSelected}>
+              {selected ? "Comparing" : "Compare"}
+            </button>
+            <span className={consensus ? "label good" : rejected ? "label dangerLabel" : "label"}>{consensus ? "Consensus" : rejected ? "Rejected" : journal.dhet}</span>
+          </div>
+        </div>
+
+        <div className="scoreRibbon">
+          <Score name="KTS" value={journal.trilemma} />
+          <Score name="Scope" value={journal.fit} />
+          <Score name="Quality" value={journal.quality} />
+          <Score name="Access" value={journal.affordability} />
+          <Score name="Speed" value={journal.speed} />
+        </div>
+
+        <div className="factsGrid">
+          <Fact label="Eligibility" value={journal.eligibility?.source || journal.dhet} />
+          <Fact label="Matched by" value={journal.eligibility?.matchedBy || "ISSN"} />
+          <Fact label="Quartile" value={journal.quartile} />
+          <Fact label="JIF" value={journal.impactFactor == null ? "Not verified" : String(journal.impactFactor)} />
+          <Fact label="APC" value={journal.apcDisplay || "Unknown"} />
+          <Fact label="Works" value={journal.matchedWorks.toLocaleString()} />
+        </div>
+
+        <p className="why">{journal.rationale}</p>
+        {journal.risk && <p className="riskNote">{journal.risk}</p>}
+
+        <div className="nodeGrid">
+          {journal.trilemmaNodes.map((node) => (
+            <NodeCard key={node.key} node={node} />
+          ))}
+        </div>
+
+        <details className="detailPanel">
+          <summary>Why this rank?</summary>
+          <div className="detailGrid">
+            {journal.trilemmaNodes.map((node) => (
+              <NodeLedger key={node.key} node={node} />
+            ))}
+          </div>
+        </details>
+
+        <details className="detailPanel">
+          <summary>Evidence ledger</summary>
+          <EvidenceLedger items={journal.evidence} />
+        </details>
+
+        <div className="voteGrid">
+          <VoteControl label="Researcher" value={decision.researcher} onChange={(researcher) => onDecision({ researcher })} />
+          <VoteControl label="Supervisor" value={decision.supervisor} onChange={(supervisor) => onDecision({ supervisor })} />
+        </div>
+        <label className="noteBox">
+          Decision note
+          <textarea
+            rows={2}
+            value={decision.note}
+            onChange={(e) => onDecision({ note: e.target.value })}
+            placeholder="Record submission fit, supervisor caveat, APC concern or next check"
+          />
+        </label>
+      </div>
+    </article>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <span>
+      {label}
+      <b>{value}</b>
+    </span>
+  );
+}
+
+function Score({ name, value }: { name: string; value: number }) {
+  return (
+    <div className="score">
+      <span>{name}</span>
+      <b>{value}</b>
+      <i>
+        <em style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
+      </i>
+    </div>
+  );
+}
+
+function NodeCard({ node }: { node: TrilemmaNode }) {
+  return (
+    <div className="nodeCard">
+      <span>{node.label}</span>
+      <b>
+        {node.score} <small>{node.grade}</small>
+      </b>
+      <i>
+        <em style={{ width: `${Math.max(0, Math.min(100, node.score))}%` }} />
+      </i>
+    </div>
+  );
+}
+
+function NodeLedger({ node }: { node: TrilemmaNode }) {
+  return (
+    <div className="nodeLedger">
+      <h4>
+        {node.label} <span>{node.grade}</span>
+      </h4>
+      {node.contributions.map((item) => (
+        <Contribution key={`${node.key}-${item.key}-${item.label}`} item={item} />
+      ))}
+    </div>
+  );
+}
+
+function Contribution({ item }: { item: ScoreContribution }) {
+  return (
+    <div className="contributionRow">
+      <div>
+        <b>{item.label}</b>
+        <span>{item.raw}</span>
+      </div>
+      <small>{item.status}</small>
+      <em>{item.weightedPoints.toFixed(1)}</em>
+    </div>
+  );
+}
+
+function EvidenceLedger({ items }: { items: EvidenceItem[] }) {
+  if (!items.length) return <p className="mutedCopy">No evidence records were attached to this journal.</p>;
+  return (
+    <div className="evidenceRows">
+      {items.map((item, index) => (
+        <div className="evidenceRow" key={`${item.source}-${item.field}-${index}`}>
+          <div>
+            <b>
+              {item.source} / {item.field.replaceAll("_", " ")}
+            </b>
+            <span>{String(item.value ?? "Unknown")}</span>
+            {item.note && <small>{item.note}</small>}
+          </div>
+          <i>{formatConfidence(item.confidence)}</i>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function VoteControl({ label, value, onChange }: { label: string; value: Vote; onChange: (v: Vote) => void }) {
+  return (
+    <div className="voteControl">
+      <span>{label}</span>
+      <div>
+        <button
+          type="button"
+          className={`approve ${value === "approve" ? "active" : ""}`}
+          onClick={() => onChange(value === "approve" ? "undecided" : "approve")}
+        >
+          Suitable
+        </button>
+        <button
+          type="button"
+          className={`reject ${value === "reject" ? "active" : ""}`}
+          onClick={() => onChange(value === "reject" ? "undecided" : "reject")}
+        >
+          Not suitable
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function formatConfidence(value: number) {
+  const pct = value <= 1 ? Math.round(value * 100) : Math.round(value);
+  return `${pct}% confidence`;
+}

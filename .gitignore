@@ -4,4 +4,6 @@ node_modules
 .env.local
 .DS_Store
 npm-debug.log*
+dev-server*.log
+tsconfig.tsbuildinfo
 src/lib/kagua/data/dhet-2025-2026.json.gz
