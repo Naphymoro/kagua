@@ -27,6 +27,8 @@ type SortKey = "kpos" | "trilemma" | "fit" | "quality" | "affordability" | "spee
 type Draft = {
   title: string;
   abstract: string;
+  inputMode: "structured" | "full";
+  manuscript: string;
   keywords: string;
   budget: number;
   days: number;
@@ -130,11 +132,18 @@ export default function Home() {
   const [theme, setTheme] = useState<Theme>("light");
   const [title, setTitle] = useState("");
   const [abstract, setAbstract] = useState("");
+  // Two mutually exclusive ways to feed Kagua a manuscript: fill in the
+  // structured title+abstract fields, or paste the paper's full text into
+  // one box. Both feed the same anchors()/discovery-query pipeline
+  // server-side (see scoring.ts, evidence.ts) — this only controls which
+  // input the researcher sees and edits.
+  const [inputMode, setInputMode] = useState<"structured" | "full">("structured");
+  const [manuscript, setManuscript] = useState("");
   const [keywords, setKeywords] = useState("");
   const [budget, setBudget] = useState(2500);
   const [days, setDays] = useState(45);
   const [speedLocked, setSpeedLocked] = useState(false);
-  const [metrics, setMetrics] = useState<MetricPreferences>({ apc: true, quartile: true, impactFactor: true, publisher: false });
+  const [metrics, setMetrics] = useState<MetricPreferences>({ apc: true, quartile: true, impactFactor: true });
   const [quartilePreset, setQuartilePreset] = useState("any");
   const [publisherFilter, setPublisherFilter] = useState("");
   const [jifMin, setJifMin] = useState("");
@@ -189,6 +198,8 @@ export default function Home() {
     const draft = readDraft();
     if (draft.title) setTitle(draft.title);
     if (draft.abstract) setAbstract(draft.abstract);
+    if (draft.inputMode) setInputMode(draft.inputMode);
+    if (draft.manuscript) setManuscript(draft.manuscript);
     if (draft.keywords) setKeywords(draft.keywords);
     if (draft.budget != null) setBudget(draft.budget);
     if (draft.days != null) setDays(draft.days);
@@ -217,6 +228,8 @@ export default function Home() {
     const draft: Draft = {
       title,
       abstract,
+      inputMode,
+      manuscript,
       keywords,
       budget,
       days,
@@ -237,6 +250,8 @@ export default function Home() {
     } catch {}
   }, [
     abstract,
+    inputMode,
+    manuscript,
     baseUrl,
     budget,
     days,
@@ -258,14 +273,20 @@ export default function Home() {
   const keywordList = useMemo(() => keywords.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean), [keywords]);
   const selectedQuartiles = quartileOptions.find((x) => x.value === quartilePreset)?.quartiles || [];
   const abstractWords = useMemo(() => abstract.trim().split(/\s+/).filter(Boolean).length, [abstract]);
+  const manuscriptWords = useMemo(() => manuscript.trim().split(/\s+/).filter(Boolean).length, [manuscript]);
   const readiness = useMemo(() => {
     let score = 0;
-    if (title.trim().length > 12) score += 32;
-    if (abstractWords >= 80) score += 38;
+    if (inputMode === "full") {
+      if (manuscript.trim().length > 40) score += 32;
+      if (manuscriptWords >= 150) score += 38;
+    } else {
+      if (title.trim().length > 12) score += 32;
+      if (abstractWords >= 80) score += 38;
+    }
     if (keywordList.length >= 3) score += 16;
     if (eligibilityPolicy === "dhet" || customList || eligibilityPolicy === "all") score += 14;
     return Math.min(100, score);
-  }, [abstractWords, customList, eligibilityPolicy, keywordList.length, title]);
+  }, [abstractWords, customList, eligibilityPolicy, inputMode, keywordList.length, manuscript, manuscriptWords, title]);
   const table = useMemo(
     () => [...(data?.rankingExplorer || [])].sort((a, b) => Number(b[sort] || 0) - Number(a[sort] || 0)),
     [data, sort],
@@ -304,11 +325,13 @@ export default function Home() {
   function clearDraft() {
     setTitle("");
     setAbstract("");
+    setManuscript("");
+    setInputMode("structured");
     setKeywords("");
     setBudget(2500);
     setDays(45);
     setSpeedLocked(false);
-    setMetrics({ apc: true, quartile: true, impactFactor: true, publisher: false });
+    setMetrics({ apc: true, quartile: true, impactFactor: true });
     setPublisherFilter("");
     setQuartilePreset("any");
     setJifMin("");
@@ -324,6 +347,7 @@ export default function Home() {
   }
 
   function fillDemo() {
+    setInputMode("structured");
     setTitle("Single-atom catalysts on ceria for low-temperature ammonia decomposition");
     setAbstract(
       "This manuscript reports density functional theory and microkinetic analysis of transition-metal single atom catalysts anchored on defective ceria surfaces for low-temperature ammonia decomposition. The study compares nitrogen vacancy formation, hydrogen spillover, N-H bond activation barriers, and catalyst stability across multiple dopants. The work combines mechanistic modelling with materials screening to identify affordable catalyst motifs for green hydrogen carrier systems.",
@@ -361,6 +385,7 @@ export default function Home() {
     return {
       title,
       abstract,
+      manuscript,
       keywords: keywordList,
       budgetUsd: budget,
       desiredDays: days,
@@ -372,7 +397,7 @@ export default function Home() {
       quartileSelection: metrics.quartile ? selectedQuartiles : [],
       impactFactorMin: metrics.impactFactor && jifMin !== "" ? Number(jifMin) : null,
       impactFactorMax: metrics.impactFactor && jifMax !== "" ? Number(jifMax) : null,
-      publisherFilter: metrics.publisher && publisherFilter ? publisherFilter : null,
+      publisherFilter: publisherFilter || null,
       excludeJournalIds: exclude,
       batchSize: 5,
       explorerSize: 50,
@@ -457,11 +482,14 @@ export default function Home() {
     setSelectedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id].slice(-4)));
   }
 
-  // A title or an abstract alone is enough to search on — some researchers
-  // start with only a working title, others only have an abstract drafted.
-  const canSubmit = Boolean((title.trim() || abstract.trim()) && !busy);
+  // A title alone, an abstract alone, or a pasted full manuscript alone is
+  // enough to search on — whichever the researcher actually has.
+  const canSubmit = Boolean(
+    (inputMode === "full" ? manuscript.trim() : title.trim() || abstract.trim()) && !busy,
+  );
   const stepMeta = [
     { label: "Authority", done: eligibilityPolicy === "dhet" || eligibilityPolicy === "all" || Boolean(customList) },
+    { label: "Publisher", done: Boolean(publisherFilter) },
     { label: "Limits", done: metrics.apc || metrics.quartile || metrics.impactFactor },
     { label: "Engine", done: mode !== "none" },
   ];
@@ -561,6 +589,39 @@ export default function Home() {
           <section className="formSection" hidden={step !== 1}>
             <div className="sectionTitle">
               <span>02</span>
+              <h2>Publisher</h2>
+            </div>
+            <label>
+              Limit the search to one publisher
+              <select value={publisherFilter} onChange={(e) => setPublisherFilter(e.target.value)}>
+                <option value="">Any publisher (default)</option>
+                {PUBLISHER_OPTIONS.map((x) => (
+                  <option key={x.value} value={x.value}>
+                    {x.label}
+                  </option>
+                ))}
+              </select>
+              <small className="hint">
+                Groups legal-entity variants together — Elsevier BV, Elsevier Inc and Elsevier Ltd all count as
+                Elsevier.
+              </small>
+            </label>
+            {publisherFilter && (
+              <div className="authorityPanel">
+                <div>
+                  <b>Restricted to {PUBLISHER_OPTIONS.find((x) => x.value === publisherFilter)?.label}</b>
+                  <span>Every other publisher is excluded from this search, regardless of fit or quality.</span>
+                </div>
+                <button type="button" className="secondaryButton" onClick={() => setPublisherFilter("")}>
+                  Clear
+                </button>
+              </div>
+            )}
+          </section>
+
+          <section className="formSection" hidden={step !== 2}>
+            <div className="sectionTitle">
+              <span>03</span>
               <h2>Journal limits</h2>
             </div>
             <div className="metricAccordion">
@@ -598,22 +659,6 @@ export default function Home() {
                   </label>
                 </div>
               </MetricRow>
-              <MetricRow label="Publisher" checked={metrics.publisher} onChange={(v) => setMetrics({ ...metrics, publisher: v })}>
-                <label>
-                  Limit to one publisher
-                  <select value={publisherFilter} onChange={(e) => setPublisherFilter(e.target.value)}>
-                    <option value="">Choose a publisher</option>
-                    {PUBLISHER_OPTIONS.map((x) => (
-                      <option key={x.value} value={x.value}>
-                        {x.label}
-                      </option>
-                    ))}
-                  </select>
-                  <small className="hint">
-                    Groups legal-entity variants together (Elsevier BV/Inc/Ltd all count as Elsevier).
-                  </small>
-                </label>
-              </MetricRow>
             </div>
             <label>
               Desired first decision
@@ -629,9 +674,9 @@ export default function Home() {
             </label>
           </section>
 
-          <section className="formSection" hidden={step !== 2}>
+          <section className="formSection" hidden={step !== 3}>
             <div className="sectionTitle">
-              <span>03</span>
+              <span>04</span>
               <h2>Intelligence engine</h2>
             </div>
             <div className="segmented four engineModes" aria-label="LLM mode">
@@ -722,13 +767,18 @@ export default function Home() {
 
         <section className="results resultStack" aria-live="polite">
           <ManuscriptCard
+            inputMode={inputMode}
+            setInputMode={setInputMode}
             title={title}
             setTitle={setTitle}
             abstract={abstract}
             setAbstract={setAbstract}
+            manuscript={manuscript}
+            setManuscript={setManuscript}
             keywords={keywords}
             setKeywords={setKeywords}
             abstractWords={abstractWords}
+            manuscriptWords={manuscriptWords}
             keywordCount={keywordList.length}
             onDemo={fillDemo}
           />
@@ -908,23 +958,33 @@ function MetricRow({
 }
 
 function ManuscriptCard({
+  inputMode,
+  setInputMode,
   title,
   setTitle,
   abstract,
   setAbstract,
+  manuscript,
+  setManuscript,
   keywords,
   setKeywords,
   abstractWords,
+  manuscriptWords,
   keywordCount,
   onDemo,
 }: {
+  inputMode: "structured" | "full";
+  setInputMode: (v: "structured" | "full") => void;
   title: string;
   setTitle: (v: string) => void;
   abstract: string;
   setAbstract: (v: string) => void;
+  manuscript: string;
+  setManuscript: (v: string) => void;
   keywords: string;
   setKeywords: (v: string) => void;
   abstractWords: number;
+  manuscriptWords: number;
   keywordCount: number;
   onDemo: () => void;
 }) {
@@ -939,20 +999,48 @@ function ManuscriptCard({
           Try sample manuscript
         </button>
       </div>
-      <p className="mutedCopy manuscriptHint">A title alone or an abstract alone is enough to search — more of either sharpens the match.</p>
-      <label>
-        Manuscript title
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Paste the working title" />
-      </label>
-      <label>
-        Abstract
-        <textarea
-          rows={6}
-          value={abstract}
-          onChange={(e) => setAbstract(e.target.value)}
-          placeholder="Paste the abstract or a structured summary"
-        />
-      </label>
+      <div className="segmented two manuscriptModeToggle" aria-label="Manuscript input mode">
+        <button type="button" className={inputMode === "structured" ? "active" : ""} onClick={() => setInputMode("structured")}>
+          Title &amp; abstract
+        </button>
+        <button type="button" className={inputMode === "full" ? "active" : ""} onClick={() => setInputMode("full")}>
+          Full manuscript
+        </button>
+      </div>
+      {inputMode === "structured" ? (
+        <>
+          <p className="mutedCopy manuscriptHint">A title alone or an abstract alone is enough to search — more of either sharpens the match.</p>
+          <label>
+            Manuscript title
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Paste the working title" />
+          </label>
+          <label>
+            Abstract
+            <textarea
+              rows={6}
+              value={abstract}
+              onChange={(e) => setAbstract(e.target.value)}
+              placeholder="Paste the abstract or a structured summary"
+            />
+          </label>
+        </>
+      ) : (
+        <>
+          <p className="mutedCopy manuscriptHint">
+            Paste the paper itself — Kagua reads it the same way it would read a title and abstract, just with more to
+            work with.
+          </p>
+          <label>
+            Full manuscript
+            <textarea
+              rows={14}
+              value={manuscript}
+              onChange={(e) => setManuscript(e.target.value)}
+              placeholder="Paste the full manuscript text (intro, methods, results — as much as you have)"
+            />
+          </label>
+        </>
+      )}
       <label>
         Keywords
         <input
@@ -962,7 +1050,7 @@ function ManuscriptCard({
         />
       </label>
       <div className="signalStrip">
-        <SmallMetric label="Words" value={abstractWords.toLocaleString()} />
+        <SmallMetric label="Words" value={(inputMode === "full" ? manuscriptWords : abstractWords).toLocaleString()} />
         <SmallMetric label="Keywords" value={keywordCount.toString()} />
         <SmallMetric label="Scope floor" value="60/100" />
       </div>

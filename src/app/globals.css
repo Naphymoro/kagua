@@ -259,7 +259,7 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
    this sidebar mostly won't need its own internal scrollbar any more — the
    overflow:auto above stays only as a safety net for an unusually long
    abstract, not as the primary way to reach the rest of the form. */
-.workflowProgress { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 18px; }
+.workflowProgress { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 18px; }
 .stepPill {
   min-height: 40px; display: flex; align-items: center; justify-content: center; gap: 7px;
   border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2);
@@ -331,6 +331,8 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
 
 .segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 10px; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
 .segmented.four { grid-template-columns: repeat(4, 1fr); }
+.segmented.two { grid-template-columns: repeat(2, 1fr); }
+.manuscriptModeToggle { margin-top: 14px; margin-bottom: 4px; }
 .segmented button, .voteControl button {
   min-height: 36px; border: 0; background: transparent; color: var(--ink-soft); border-radius: 7px;
   padding: 7px 8px; font-weight: 650; font-size: 12px; cursor: pointer; text-transform: none;
