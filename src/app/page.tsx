@@ -451,7 +451,6 @@ export default function Home() {
 
   const canSubmit = Boolean(title.trim() && abstract.trim() && !busy);
   const stepMeta = [
-    { label: "Manuscript", done: readiness >= 32 },
     { label: "Authority", done: eligibilityPolicy === "dhet" || eligibilityPolicy === "all" || Boolean(customList) },
     { label: "Limits", done: metrics.apc || metrics.quartile || metrics.impactFactor },
     { label: "Engine", done: mode !== "none" },
@@ -498,40 +497,6 @@ export default function Home() {
           <section className="formSection" hidden={step !== 0}>
             <div className="sectionTitle">
               <span>01</span>
-              <h2>Manuscript signal</h2>
-            </div>
-            <label>
-              Manuscript title
-              <input required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Paste the working title" />
-            </label>
-            <label>
-              Abstract
-              <textarea
-                required
-                rows={7}
-                value={abstract}
-                onChange={(e) => setAbstract(e.target.value)}
-                placeholder="Paste the abstract or a structured summary"
-              />
-            </label>
-            <label>
-              Keywords
-              <input
-                value={keywords}
-                onChange={(e) => setKeywords(e.target.value)}
-                placeholder="ammonia decomposition, ceria, DFT"
-              />
-            </label>
-            <div className="signalStrip">
-              <SmallMetric label="Words" value={abstractWords.toLocaleString()} />
-              <SmallMetric label="Keywords" value={keywordList.length.toString()} />
-              <SmallMetric label="Scope floor" value="60/100" />
-            </div>
-          </section>
-
-          <section className="formSection" hidden={step !== 1}>
-            <div className="sectionTitle">
-              <span>02</span>
               <h2>Eligibility authority</h2>
             </div>
             <label>
@@ -583,50 +548,47 @@ export default function Home() {
             )}
           </section>
 
-          <section className="formSection" hidden={step !== 2}>
+          <section className="formSection" hidden={step !== 1}>
             <div className="sectionTitle">
-              <span>03</span>
+              <span>02</span>
               <h2>Journal limits</h2>
             </div>
-            <div className="metricToggles">
-              <Metric label="APC" checked={metrics.apc} onChange={(v) => setMetrics({ ...metrics, apc: v })} />
-              <Metric label="Quartile" checked={metrics.quartile} onChange={(v) => setMetrics({ ...metrics, quartile: v })} />
-              <Metric
+            <div className="metricAccordion">
+              <MetricRow label="APC" checked={metrics.apc} onChange={(v) => setMetrics({ ...metrics, apc: v })}>
+                <label>
+                  Maximum APC (USD)
+                  <input type="number" min="0" value={budget} onChange={(e) => setBudget(Number(e.target.value))} />
+                </label>
+              </MetricRow>
+              <MetricRow label="Quartile" checked={metrics.quartile} onChange={(v) => setMetrics({ ...metrics, quartile: v })}>
+                <label>
+                  Allowed quartile range
+                  <select value={quartilePreset} onChange={(e) => setQuartilePreset(e.target.value)}>
+                    {quartileOptions.map((x) => (
+                      <option key={x.value} value={x.value}>
+                        {x.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </MetricRow>
+              <MetricRow
                 label="Impact Factor"
                 checked={metrics.impactFactor}
                 onChange={(v) => setMetrics({ ...metrics, impactFactor: v })}
-              />
+              >
+                <div className="grid2">
+                  <label>
+                    Minimum JIF
+                    <input type="number" min="0" step="0.1" value={jifMin} onChange={(e) => setJifMin(e.target.value)} />
+                  </label>
+                  <label>
+                    Maximum JIF
+                    <input type="number" min="0" step="0.1" value={jifMax} onChange={(e) => setJifMax(e.target.value)} />
+                  </label>
+                </div>
+              </MetricRow>
             </div>
-            {metrics.apc && (
-              <label>
-                Maximum APC (USD)
-                <input type="number" min="0" value={budget} onChange={(e) => setBudget(Number(e.target.value))} />
-              </label>
-            )}
-            {metrics.quartile && (
-              <label>
-                Allowed quartile range
-                <select value={quartilePreset} onChange={(e) => setQuartilePreset(e.target.value)}>
-                  {quartileOptions.map((x) => (
-                    <option key={x.value} value={x.value}>
-                      {x.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {metrics.impactFactor && (
-              <div className="grid2">
-                <label>
-                  Minimum JIF
-                  <input type="number" min="0" step="0.1" value={jifMin} onChange={(e) => setJifMin(e.target.value)} />
-                </label>
-                <label>
-                  Maximum JIF
-                  <input type="number" min="0" step="0.1" value={jifMax} onChange={(e) => setJifMax(e.target.value)} />
-                </label>
-              </div>
-            )}
             <label>
               Desired first decision
               <span className="rangeMeta">{days} days</span>
@@ -641,9 +603,9 @@ export default function Home() {
             </label>
           </section>
 
-          <section className="formSection" hidden={step !== 3}>
+          <section className="formSection" hidden={step !== 2}>
             <div className="sectionTitle">
-              <span>04</span>
+              <span>03</span>
               <h2>Intelligence engine</h2>
             </div>
             <div className="segmented four engineModes" aria-label="LLM mode">
@@ -733,6 +695,17 @@ export default function Home() {
         </form>
 
         <section className="results resultStack" aria-live="polite">
+          <ManuscriptCard
+            title={title}
+            setTitle={setTitle}
+            abstract={abstract}
+            setAbstract={setAbstract}
+            keywords={keywords}
+            setKeywords={setKeywords}
+            abstractWords={abstractWords}
+            keywordCount={keywordList.length}
+            onDemo={fillDemo}
+          />
           {!data ? (
             <LaunchPanel
               readiness={readiness}
@@ -740,7 +713,6 @@ export default function Home() {
               keywordCount={keywordList.length}
               policy={policyLabels[eligibilityPolicy]}
               busy={busy}
-              onDemo={fillDemo}
             />
           ) : (
             <>
@@ -887,12 +859,88 @@ function SmallMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Metric({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
+function MetricRow({
+  label,
+  checked,
+  onChange,
+  children,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  children: React.ReactNode;
+}) {
   return (
-    <button type="button" className={`metricToggle ${checked ? "on" : ""}`} aria-pressed={checked} onClick={() => onChange(!checked)}>
-      <b>{label}</b>
-      <i>{checked ? "ON" : "OFF"}</i>
-    </button>
+    <div className={`metricRow ${checked ? "on" : ""}`}>
+      <button type="button" className="metricRowHead" aria-expanded={checked} onClick={() => onChange(!checked)}>
+        <b>{label}</b>
+        <i>{checked ? "ON" : "OFF"}</i>
+      </button>
+      {checked && <div className="metricRowBody">{children}</div>}
+    </div>
+  );
+}
+
+function ManuscriptCard({
+  title,
+  setTitle,
+  abstract,
+  setAbstract,
+  keywords,
+  setKeywords,
+  abstractWords,
+  keywordCount,
+  onDemo,
+}: {
+  title: string;
+  setTitle: (v: string) => void;
+  abstract: string;
+  setAbstract: (v: string) => void;
+  keywords: string;
+  setKeywords: (v: string) => void;
+  abstractWords: number;
+  keywordCount: number;
+  onDemo: () => void;
+}) {
+  return (
+    <section className="card manuscriptCard">
+      <div className="cardHead">
+        <div>
+          <span className="eyebrow">01 · MANUSCRIPT SIGNAL</span>
+          <h2>What are you submitting?</h2>
+        </div>
+        <button type="button" className="secondaryButton sampleButton" onClick={onDemo}>
+          Try sample manuscript
+        </button>
+      </div>
+      <label>
+        Manuscript title
+        <input required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Paste the working title" />
+      </label>
+      <label>
+        Abstract
+        <textarea
+          required
+          rows={6}
+          value={abstract}
+          onChange={(e) => setAbstract(e.target.value)}
+          placeholder="Paste the abstract or a structured summary"
+        />
+      </label>
+      <label>
+        Keywords
+        <input
+          value={keywords}
+          onChange={(e) => setKeywords(e.target.value)}
+          placeholder="ammonia decomposition, ceria, DFT"
+        />
+      </label>
+      <div className="signalStrip">
+        <SmallMetric label="Words" value={abstractWords.toLocaleString()} />
+        <SmallMetric label="Keywords" value={keywordCount.toString()} />
+        <SmallMetric label="Scope floor" value="60/100" />
+      </div>
+    </section>
   );
 }
 
@@ -902,14 +950,12 @@ function LaunchPanel({
   keywordCount,
   policy,
   busy,
-  onDemo,
 }: {
   readiness: number;
   abstractWords: number;
   keywordCount: number;
   policy: string;
   busy: boolean;
-  onDemo: () => void;
 }) {
   return (
     <div className={`card launchPanel ${busy ? "isBusy" : ""}`}>
@@ -920,9 +966,6 @@ function LaunchPanel({
           The recommendation room will show the shortlist, decision notes, score balance, eligibility explanation and
           source ledger after analysis.
         </p>
-        <button type="button" className="secondaryButton sampleButton" onClick={onDemo}>
-          Try sample manuscript
-        </button>
       </div>
       <div className="readinessPanel">
         <div className="readinessDial" style={{ ["--ready" as string]: `${readiness}%` }}>

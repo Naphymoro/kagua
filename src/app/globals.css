@@ -258,7 +258,7 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
    this sidebar mostly won't need its own internal scrollbar any more — the
    overflow:auto above stays only as a safety net for an unusually long
    abstract, not as the primary way to reach the rest of the form. */
-.workflowProgress { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 18px; }
+.workflowProgress { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 18px; }
 .stepPill {
   min-height: 40px; display: flex; align-items: center; justify-content: center; gap: 7px;
   border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2);
@@ -305,17 +305,22 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
   margin-top: 9px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-2);
 }
 
-.metricToggles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 10px; }
-.metricToggle {
-  min-height: 54px; border: 1px solid var(--line); border-radius: var(--radius-sm);
-  background: var(--surface); color: var(--ink); padding: 9px 11px; text-align: left;
-  display: flex; justify-content: space-between; align-items: center; cursor: pointer;
-  transition: border-color .15s, background .15s;
+/* Each limit is its own row: click the toggle and its own detail control
+   expands directly beneath it, instead of every enabled metric's control
+   piling up together below a separate row of toggle buttons. */
+.metricAccordion { display: grid; gap: 7px; margin-top: 10px; }
+.metricRow { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); overflow: hidden; transition: border-color .15s, background .15s; }
+.metricRow.on { border-color: var(--accent); background: var(--soft); }
+.metricRowHead {
+  width: 100%; min-height: 46px; border: 0; background: transparent; color: var(--ink); cursor: pointer;
+  padding: 10px 12px; display: flex; justify-content: space-between; align-items: center;
 }
-.metricToggle b { font-size: 13px; font-weight: 650; }
-.metricToggle i { font-style: normal; font-size: 9px; font-weight: 700; color: var(--muted); letter-spacing: .04em; }
-.metricToggle.on { border-color: var(--accent); background: var(--soft); }
-.metricToggle.on i { color: var(--accent); }
+.metricRowHead b { font-size: 13px; font-weight: 650; }
+.metricRowHead i { font-style: normal; font-size: 9px; font-weight: 700; color: var(--muted); letter-spacing: .04em; }
+.metricRow.on .metricRowHead i { color: var(--accent); }
+.metricRowBody { padding: 0 12px 12px; }
+.metricRowBody label { margin-top: 0; }
+.metricRowBody label:first-child { margin-top: 2px; }
 
 .rangeMeta { float: right; color: var(--accent); font-size: 12px; font-weight: 650; }
 .lockRow { display: flex; gap: 10px; align-items: flex-start; text-transform: none; }
@@ -384,6 +389,13 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
   min-height: 38px; display: grid; place-items: center; border-radius: var(--radius-sm);
   background: var(--surface-2); color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase;
 }
+
+/* Always visible above the results/launch panel (not just pre-submission) so
+   a researcher can tweak the manuscript and re-run without losing place. */
+.manuscriptCard { padding: 20px; }
+.manuscriptCard .cardHead { margin-bottom: 4px; }
+.manuscriptCard .sampleButton { margin: 0; }
+.manuscriptCard textarea { min-height: 118px; }
 
 .runSnapshot { padding: 20px; display: grid; gap: 15px; }
 .snapshotLead h2 { font-size: 28px; }
@@ -730,7 +742,7 @@ tbody tr:hover { background: var(--soft); }
 @media (max-width: 700px) {
   .shell { padding: 0 14px 40px; }
   .grid2, .voteGrid, .manualGrid { grid-template-columns: 1fr; }
-  .metricToggles { grid-template-columns: 1fr; }
+  .manuscriptCard .cardHead { flex-wrap: wrap; }
   .segmented.four { grid-template-columns: 1fr 1fr; }
   .journal { padding: 15px; }
   .hero, .productHero { padding-top: 30px; }
