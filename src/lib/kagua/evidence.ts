@@ -55,9 +55,14 @@ async function resolveSourceId(issns:string[]):Promise<string|null>{for(const id
 // against the API: a 3-4 word query returned 11-100+ hits on the exact
 // same journal where the long query returned zero. Keep this short.
 function shortTopicQuery(r:AnalysisRequest):string{
+  // Title and abstract are each independently optional now (a researcher
+  // can search on either alone) — keywords first, then whichever of
+  // title/abstract is actually present, so this never degenerates to an
+  // empty search string.
   const fromKeywords=(r.keywords||[]).slice(0,4).join(" ");
-  const q=fromKeywords||txt(r.title).split(/\s+/).slice(0,6).join(" ");
-  return txt(q).slice(0,120);
+  const fromTitle=txt(r.title||"").split(/\s+/).filter(Boolean).slice(0,6).join(" ");
+  const fromAbstract=txt(r.abstract||"").split(/\s+/).filter(Boolean).slice(0,6).join(" ");
+  return txt(fromKeywords||fromTitle||fromAbstract).slice(0,120);
 }
 async function journalWorks(shortId:string,search:string|null,email:string):Promise<any[]>{
   const params=new URLSearchParams({"per-page":"6"});

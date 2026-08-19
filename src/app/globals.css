@@ -131,6 +131,7 @@ a { color: inherit; }
 .appTabsBrandText small, .brand small { display: block; color: var(--muted); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
 .appTabsLinks { display: flex; align-items: center; gap: 2px; margin-left: auto; }
 .appTabsLinks a { padding: 9px 13px; border-radius: var(--radius-sm); color: var(--muted); font-size: 13px; font-weight: 600; text-decoration: none; transition: background .15s, color .15s; }
+.appTabsHome { margin-right: 6px; padding-right: 12px !important; border-right: 1px solid var(--line); border-radius: 0 !important; }
 .appTabsLinks a:hover { color: var(--accent); background: var(--soft); }
 .authNav { display: flex; align-items: center; gap: 8px; }
 .authNav .chip { max-width: 200px; overflow: hidden; text-overflow: ellipsis; background: var(--soft); border-color: color-mix(in srgb, var(--accent) 25%, var(--line)); color: var(--ink); text-transform: none; letter-spacing: 0; }
@@ -395,6 +396,7 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
 .manuscriptCard { padding: 20px; }
 .manuscriptCard .cardHead { margin-bottom: 4px; }
 .manuscriptCard .sampleButton { margin: 0; }
+.manuscriptHint { margin: 10px 0 0; }
 .manuscriptCard textarea { min-height: 118px; }
 
 .runSnapshot { padding: 20px; display: grid; gap: 15px; }

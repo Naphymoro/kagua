@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { parseCustomJournalList } from "@/lib/kagua/custom-list";
+import { PUBLISHER_OPTIONS } from "@/lib/kagua/publishers";
 import type {
   AfricaAuthorshipSignal,
   AnalysisResponse,
@@ -33,6 +34,7 @@ type Draft = {
   quartilePreset: string;
   jifMin: string;
   jifMax: string;
+  publisherFilter: string;
   eligibilityPolicy: EligibilityPolicy;
   mode: LlmMode;
   provider: LlmProviderId;
@@ -132,8 +134,9 @@ export default function Home() {
   const [budget, setBudget] = useState(2500);
   const [days, setDays] = useState(45);
   const [speedLocked, setSpeedLocked] = useState(false);
-  const [metrics, setMetrics] = useState<MetricPreferences>({ apc: true, quartile: true, impactFactor: true });
+  const [metrics, setMetrics] = useState<MetricPreferences>({ apc: true, quartile: true, impactFactor: true, publisher: false });
   const [quartilePreset, setQuartilePreset] = useState("any");
+  const [publisherFilter, setPublisherFilter] = useState("");
   const [jifMin, setJifMin] = useState("");
   const [jifMax, setJifMax] = useState("");
   const [eligibilityPolicy, setEligibilityPolicy] = useState<EligibilityPolicy>("dhet");
@@ -192,6 +195,7 @@ export default function Home() {
     if (draft.speedLocked) setSpeedLocked(Boolean(draft.speedLocked));
     if (draft.metrics) setMetrics(draft.metrics);
     if (draft.quartilePreset) setQuartilePreset(draft.quartilePreset);
+    if (draft.publisherFilter) setPublisherFilter(draft.publisherFilter);
     if (draft.jifMin) setJifMin(draft.jifMin);
     if (draft.jifMax) setJifMax(draft.jifMax);
     if (draft.eligibilityPolicy) setEligibilityPolicy(draft.eligibilityPolicy);
@@ -218,6 +222,7 @@ export default function Home() {
       days,
       metrics,
       quartilePreset,
+      publisherFilter,
       jifMin,
       jifMax,
       eligibilityPolicy,
@@ -244,6 +249,7 @@ export default function Home() {
     model,
     provider,
     quartilePreset,
+    publisherFilter,
     speedLocked,
     title,
   ]);
@@ -302,7 +308,8 @@ export default function Home() {
     setBudget(2500);
     setDays(45);
     setSpeedLocked(false);
-    setMetrics({ apc: true, quartile: true, impactFactor: true });
+    setMetrics({ apc: true, quartile: true, impactFactor: true, publisher: false });
+    setPublisherFilter("");
     setQuartilePreset("any");
     setJifMin("");
     setJifMax("");
@@ -365,6 +372,7 @@ export default function Home() {
       quartileSelection: metrics.quartile ? selectedQuartiles : [],
       impactFactorMin: metrics.impactFactor && jifMin !== "" ? Number(jifMin) : null,
       impactFactorMax: metrics.impactFactor && jifMax !== "" ? Number(jifMax) : null,
+      publisherFilter: metrics.publisher && publisherFilter ? publisherFilter : null,
       excludeJournalIds: exclude,
       batchSize: 5,
       explorerSize: 50,
@@ -449,7 +457,9 @@ export default function Home() {
     setSelectedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id].slice(-4)));
   }
 
-  const canSubmit = Boolean(title.trim() && abstract.trim() && !busy);
+  // A title or an abstract alone is enough to search on — some researchers
+  // start with only a working title, others only have an abstract drafted.
+  const canSubmit = Boolean((title.trim() || abstract.trim()) && !busy);
   const stepMeta = [
     { label: "Authority", done: eligibilityPolicy === "dhet" || eligibilityPolicy === "all" || Boolean(customList) },
     { label: "Limits", done: metrics.apc || metrics.quartile || metrics.impactFactor },
@@ -587,6 +597,22 @@ export default function Home() {
                     <input type="number" min="0" step="0.1" value={jifMax} onChange={(e) => setJifMax(e.target.value)} />
                   </label>
                 </div>
+              </MetricRow>
+              <MetricRow label="Publisher" checked={metrics.publisher} onChange={(v) => setMetrics({ ...metrics, publisher: v })}>
+                <label>
+                  Limit to one publisher
+                  <select value={publisherFilter} onChange={(e) => setPublisherFilter(e.target.value)}>
+                    <option value="">Choose a publisher</option>
+                    {PUBLISHER_OPTIONS.map((x) => (
+                      <option key={x.value} value={x.value}>
+                        {x.label}
+                      </option>
+                    ))}
+                  </select>
+                  <small className="hint">
+                    Groups legal-entity variants together (Elsevier BV/Inc/Ltd all count as Elsevier).
+                  </small>
+                </label>
               </MetricRow>
             </div>
             <label>
@@ -913,14 +939,14 @@ function ManuscriptCard({
           Try sample manuscript
         </button>
       </div>
+      <p className="mutedCopy manuscriptHint">A title alone or an abstract alone is enough to search — more of either sharpens the match.</p>
       <label>
         Manuscript title
-        <input required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Paste the working title" />
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Paste the working title" />
       </label>
       <label>
         Abstract
         <textarea
-          required
           rows={6}
           value={abstract}
           onChange={(e) => setAbstract(e.target.value)}
