@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { parseCustomJournalList } from "@/lib/kagua/custom-list";
 import type {
+  AfricaAuthorshipSignal,
   AnalysisResponse,
   CustomJournalList,
   EligibilityPolicy,
@@ -14,6 +15,7 @@ import type {
   MetricPreferences,
   Quartile,
   ScoreContribution,
+  SimilarWork,
   TrilemmaNode,
 } from "@/lib/kagua/types";
 
@@ -113,39 +115,97 @@ function readDraft() {
 }
 
 export default function Home() {
-  const [draft] = useState<Partial<Draft>>(() => readDraft());
+  // Every field below starts at a fixed default — the same one the server
+  // renders — rather than reading the saved draft during the initial
+  // render. Reading localStorage in a useState initializer is exactly what
+  // was causing the "hydration failed" error on every reload once a draft
+  // existed: the server always renders empty defaults, but the client's
+  // first render (which runs during hydration, not after) would read the
+  // real saved draft, so nearly every field diverged from what the server
+  // sent. The draft is now restored in a mount effect below instead — same
+  // one-time-flash tradeoff as the theme restore, and for the same reason:
+  // there's no way to know a browser-only value before the client has run.
   const [theme, setTheme] = useState<Theme>("light");
-  const [title, setTitle] = useState(draft.title || "");
-  const [abstract, setAbstract] = useState(draft.abstract || "");
-  const [keywords, setKeywords] = useState(draft.keywords || "");
-  const [budget, setBudget] = useState(draft.budget ?? 2500);
-  const [days, setDays] = useState(draft.days ?? 45);
-  const [speedLocked, setSpeedLocked] = useState(Boolean(draft.speedLocked));
-  const [metrics, setMetrics] = useState<MetricPreferences>(draft.metrics || { apc: true, quartile: true, impactFactor: true });
-  const [quartilePreset, setQuartilePreset] = useState(draft.quartilePreset || "any");
-  const [jifMin, setJifMin] = useState(draft.jifMin || "");
-  const [jifMax, setJifMax] = useState(draft.jifMax || "");
-  const [eligibilityPolicy, setEligibilityPolicy] = useState<EligibilityPolicy>(draft.eligibilityPolicy || "dhet");
+  const [title, setTitle] = useState("");
+  const [abstract, setAbstract] = useState("");
+  const [keywords, setKeywords] = useState("");
+  const [budget, setBudget] = useState(2500);
+  const [days, setDays] = useState(45);
+  const [speedLocked, setSpeedLocked] = useState(false);
+  const [metrics, setMetrics] = useState<MetricPreferences>({ apc: true, quartile: true, impactFactor: true });
+  const [quartilePreset, setQuartilePreset] = useState("any");
+  const [jifMin, setJifMin] = useState("");
+  const [jifMax, setJifMax] = useState("");
+  const [eligibilityPolicy, setEligibilityPolicy] = useState<EligibilityPolicy>("dhet");
   const [customList, setCustomList] = useState<CustomJournalList | null>(null);
   const [listBusy, setListBusy] = useState(false);
-  const [mode, setMode] = useState<LlmMode>(draft.mode || "godmode");
-  const [provider, setProvider] = useState<LlmProviderId>(draft.provider || "deepseek");
+  const [mode, setMode] = useState<LlmMode>("godmode");
+  const [provider, setProvider] = useState<LlmProviderId>("deepseek");
   const [apiKey, setApiKey] = useState("");
   const [keyOpen, setKeyOpen] = useState(false);
-  const [model, setModel] = useState(draft.model || "deepseek-chat");
-  const [baseUrl, setBaseUrl] = useState(draft.baseUrl || "https://api.deepseek.com");
-  const [data, setData] = useState<AnalysisResponse | null>(null);
+  const [model, setModel] = useState("deepseek-chat");
+  const [baseUrl, setBaseUrl] = useState("https://api.deepseek.com");
+  // Every fetched batch is kept (not overwritten), so "back"/"forward" can
+  // revisit an already-seen batch instantly instead of losing it the
+  // moment "Show next 5" runs. `data`/`batch` are derived from this rather
+  // than being their own state, so every place that already reads them
+  // keeps working unchanged.
+  const [history, setHistory] = useState<AnalysisResponse[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const data = historyIndex >= 0 ? history[historyIndex] : null;
+  const batch = historyIndex + 1;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [seen, setSeen] = useState<string[]>([]);
-  const [batch, setBatch] = useState(1);
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [view, setView] = useState<"recommendations" | "explorer">("recommendations");
   const [sort, setSort] = useState<SortKey>("kpos");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   useEffect(() => {
+    // One-time sync from the pre-paint script's DOM state (or localStorage
+    // as a fallback) into React state, so the toggle button's label matches
+    // reality after mount. This necessarily runs after first paint — there
+    // is no way to know a browser-only value before the client has run —
+    // so it's the standard, accepted exception to "don't setState in an
+    // effect on mount"; the alternative is server-side cookie plumbing for
+    // theme, which is a larger change than this pass is scoped for.
+    try {
+      const applied = document.documentElement.dataset.theme;
+      const saved = applied || localStorage.getItem("kagua.theme");
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (saved === "dark") setTheme("dark");
+    } catch {}
+  }, []);
+
+  /* eslint-disable react-hooks/set-state-in-effect -- restoring a browser-only
+     value (localStorage) after mount, matching the server's empty-form
+     render on first paint; see the comment on the state declarations above. */
+  useEffect(() => {
+    const draft = readDraft();
+    if (draft.title) setTitle(draft.title);
+    if (draft.abstract) setAbstract(draft.abstract);
+    if (draft.keywords) setKeywords(draft.keywords);
+    if (draft.budget != null) setBudget(draft.budget);
+    if (draft.days != null) setDays(draft.days);
+    if (draft.speedLocked) setSpeedLocked(Boolean(draft.speedLocked));
+    if (draft.metrics) setMetrics(draft.metrics);
+    if (draft.quartilePreset) setQuartilePreset(draft.quartilePreset);
+    if (draft.jifMin) setJifMin(draft.jifMin);
+    if (draft.jifMax) setJifMax(draft.jifMax);
+    if (draft.eligibilityPolicy) setEligibilityPolicy(draft.eligibilityPolicy);
+    if (draft.mode) setMode(draft.mode);
+    if (draft.provider) setProvider(draft.provider);
+    if (draft.model) setModel(draft.model);
+    if (draft.baseUrl) setBaseUrl(draft.baseUrl);
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem("kagua.theme", theme);
+    } catch {}
   }, [theme]);
 
   useEffect(() => {
@@ -247,9 +307,9 @@ export default function Home() {
     setJifMax("");
     setEligibilityPolicy("dhet");
     setCustomList(null);
-    setData(null);
+    setHistory([]);
+    setHistoryIndex(-1);
     setSeen([]);
-    setBatch(1);
     setDecisions({});
     setSelectedIds([]);
     setError("");
@@ -331,9 +391,9 @@ export default function Home() {
         throw new Error("Upload a university or institution journal list before using this eligibility policy.");
       }
       const response = await run([], mode === "local" ? "none" : mode);
-      setData(response);
+      setHistory([response]);
+      setHistoryIndex(0);
       setSeen(response.journals.map((j) => j.id));
-      setBatch(1);
       setView("recommendations");
       setSelectedIds(response.journals.slice(0, 2).map((j) => j.id));
       setDecisions(Object.fromEntries(response.journals.map((j) => [j.id, emptyDecision()])));
@@ -351,20 +411,37 @@ export default function Home() {
     try {
       const exclude = [...new Set([...seen, ...data.journals.map((j) => j.id)])];
       const response = await run(exclude, "none");
-      setData(response);
+      // Fetching a new batch always extends from the current position, not
+      // from wherever "history" happened to end — if the researcher went
+      // back and then asks for a new batch, that discards any batches
+      // ahead of here, same as a browser would after back + a fresh
+      // navigation.
+      setHistory((h) => [...h.slice(0, historyIndex + 1), response]);
+      setHistoryIndex((i) => i + 1);
       setSeen([...new Set([...exclude, ...response.journals.map((j) => j.id)])]);
       setSelectedIds(response.journals.slice(0, 2).map((j) => j.id));
       setDecisions((state) => ({
         ...state,
         ...Object.fromEntries(response.journals.map((j) => [j.id, state[j.id] || emptyDecision()])),
       }));
-      setBatch((n) => n + 1);
       setView("recommendations");
     } catch (e) {
       setError(e instanceof Error ? e.message : "No more matching journals");
     } finally {
       setBusy(false);
     }
+  }
+
+  function goBack() {
+    if (historyIndex <= 0) return;
+    setHistoryIndex((i) => i - 1);
+    setView("recommendations");
+  }
+
+  function goForward() {
+    if (historyIndex >= history.length - 1) return;
+    setHistoryIndex((i) => i + 1);
+    setView("recommendations");
   }
 
   function toggleSelected(id: string) {
@@ -468,7 +545,10 @@ export default function Home() {
             </div>
             <label>
               Upload institution journal list
-              <small className="hint">XLSX, XLS, CSV, TSV or TXT</small>
+              <small className="hint">
+                XLSX, XLS, CSV, TSV or TXT. Include Impact Factor / Quartile columns (e.g. a library&apos;s JCR export) and
+                Kagua treats them as verified metrics — DHET&apos;s own accreditation list carries neither.
+              </small>
               <input type="file" accept=".xlsx,.xls,.csv,.tsv,.txt" onChange={(e) => uploadList(e.target.files?.[0] || null)} />
             </label>
             {listBusy && <p className="evidence">Reading uploaded journal list...</p>}
@@ -639,9 +719,34 @@ export default function Home() {
               <Funnel data={data} />
               <ComparisonTray journals={selectedJournals} onRemove={toggleSelected} />
               <div className="decisionToolbar">
-                <div>
+                <div className="batchNavGroup">
                   <span className="eyebrow">DECISION ROOM</span>
-                  <h2>Batch {batch}: recommended now</h2>
+                  <div className="batchNav">
+                    <button
+                      type="button"
+                      className="batchArrow"
+                      onClick={goBack}
+                      disabled={historyIndex <= 0}
+                      aria-label="Previous batch"
+                      title="Previous batch"
+                    >
+                      ←
+                    </button>
+                    <h2>
+                      Batch {batch} of {history.length}
+                      {historyIndex === history.length - 1 ? ": recommended now" : " (reviewed)"}
+                    </h2>
+                    <button
+                      type="button"
+                      className="batchArrow"
+                      onClick={goForward}
+                      disabled={historyIndex >= history.length - 1}
+                      aria-label="Next batch"
+                      title="Next batch already fetched"
+                    >
+                      →
+                    </button>
+                  </div>
                 </div>
                 <div className="tabs" role="tablist" aria-label="Result views">
                   <button
@@ -1032,16 +1137,23 @@ function Journal({
           <Fact label="JIF" value={journal.impactFactor == null ? "Not verified" : String(journal.impactFactor)} />
           <Fact label="APC" value={journal.apcDisplay || "Unknown"} />
           <Fact label="Works" value={journal.matchedWorks.toLocaleString()} />
+          <Fact label="Africa-authored" value={formatAfricaShare(journal.africaAuthorship)} />
         </div>
 
-        <p className="why">{journal.rationale}</p>
+        <div className="trilemmaPanel">
+          <TrilemmaTriangle nodes={journal.trilemmaNodes} grade={journal.trilemmaBalanceGrade} />
+          <div className="trilemmaSide">
+            <p className="why">{journal.rationale}</p>
+            <div className="nodeGrid">
+              {journal.trilemmaNodes.map((node) => (
+                <NodeCard key={node.key} node={node} />
+              ))}
+            </div>
+          </div>
+        </div>
         {journal.risk && <p className="riskNote">{journal.risk}</p>}
 
-        <div className="nodeGrid">
-          {journal.trilemmaNodes.map((node) => (
-            <NodeCard key={node.key} node={node} />
-          ))}
-        </div>
+        <SimilarWorkPanel works={journal.similarWorks} africa={journal.africaAuthorship} />
 
         <details className="detailPanel">
           <summary>Why this rank?</summary>
@@ -1084,6 +1196,48 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
+function formatAfricaShare(signal?: AfricaAuthorshipSignal | null) {
+  if (!signal) return "Not sampled";
+  if (!signal.sampleSize) return "No sample";
+  return `${signal.africaCount}/${signal.sampleSize} recent (${signal.sharePct}%)`;
+}
+
+function SimilarWorkPanel({ works, africa }: { works?: SimilarWork[]; africa?: AfricaAuthorshipSignal | null }) {
+  if (!works || !works.length) return null;
+  return (
+    <div className="similarPanel">
+      <div className="cardHead">
+        <span className="eyebrow">SIMILAR RECENT WORK IN THIS JOURNAL</span>
+        {africa && (
+          <span className="statusPill">
+            {africa.africaCount}/{africa.sampleSize} sampled articles Africa-authored
+          </span>
+        )}
+      </div>
+      <ul className="similarList">
+        {works.map((w, i) => (
+          <li key={`${w.title}-${i}`}>
+            {w.url ? (
+              <a href={w.url} target="_blank" rel="noreferrer">
+                {w.title}
+              </a>
+            ) : (
+              <span>{w.title}</span>
+            )}
+            <span className="similarMeta">
+              {w.year || "Year unknown"}
+              {w.hasAfricaAuthor ? " · Africa-affiliated author" : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="mutedCopy similarNote">
+        From a live search of this journal&apos;s own back catalogue for work matching your manuscript — a sample, not a full census.
+      </p>
+    </div>
+  );
+}
+
 function Score({ name, value }: { name: string; value: number }) {
   return (
     <div className="score">
@@ -1106,6 +1260,72 @@ function NodeCard({ node }: { node: TrilemmaNode }) {
       <i>
         <em style={{ width: `${Math.max(0, Math.min(100, node.score))}%` }} />
       </i>
+    </div>
+  );
+}
+
+// Balance triangle, in the spirit of the World Energy Council's Trilemma
+// Index: each dimension is an axis of an equilateral triangle: the closer
+// the plotted point sits to a vertex, the stronger that dimension; a
+// perfectly balanced journal draws a triangle centred in the frame, while
+// an imbalanced one (e.g. strong on one axis, weak on the others) draws a
+// lopsided shape pulled toward a single corner — the shape itself is the
+// story, before you read a single number.
+const TRI_ANGLES = [-90, 30, 150].map((d) => (d * Math.PI) / 180);
+const TRI_GRADE_COLOR: Record<string, string> = {
+  A: "var(--good)",
+  B: "var(--accent)",
+  C: "var(--warn)",
+  D: "var(--danger)",
+};
+function triPoint(cx: number, cy: number, r: number, frac: number, axisIndex: number) {
+  const a = TRI_ANGLES[axisIndex];
+  return [cx + Math.cos(a) * r * frac, cy + Math.sin(a) * r * frac] as const;
+}
+function triPolygon(cx: number, cy: number, r: number, fracs: number[]) {
+  return fracs.map((f, i) => triPoint(cx, cy, r, f, i).join(",")).join(" ");
+}
+
+function TrilemmaTriangle({ nodes, grade }: { nodes: TrilemmaNode[]; grade: string }) {
+  const cx = 108;
+  const cy = 100;
+  const r = 72;
+  const rings = [0.25, 0.5, 0.75, 1];
+  const fracs = nodes.map((n) => Math.max(0.05, n.score / 100));
+  const labelAnchor: Array<"middle" | "start" | "end"> = ["middle", "start", "end"];
+  const labelDx = [0, 8, -8];
+  const labelDy = [-10, 4, 4];
+  return (
+    <div className="triWrap">
+      <svg viewBox="0 0 216 200" className="triSvg" role="img" aria-label={`Balance triangle: ${nodes.map((n) => `${n.label} ${n.score}, grade ${n.grade}`).join("; ")}`}>
+        {rings.map((f) => (
+          <polygon key={f} points={triPolygon(cx, cy, r, [f, f, f])} className="triRing" />
+        ))}
+        {TRI_ANGLES.map((a, i) => (
+          <line key={i} x1={cx} y1={cy} x2={cx + Math.cos(a) * r} y2={cy + Math.sin(a) * r} className="triAxis" />
+        ))}
+        <polygon points={triPolygon(cx, cy, r, fracs)} className="triShape" />
+        {nodes.map((n, i) => {
+          const [x, y] = triPoint(cx, cy, r, fracs[i], i);
+          return <circle key={n.key} cx={x} cy={y} r={4.5} fill={TRI_GRADE_COLOR[n.grade] || "var(--accent)"} className="triDot" />;
+        })}
+        {nodes.map((n, i) => {
+          const [x, y] = triPoint(cx, cy, r + 26, 1, i);
+          return (
+            <text key={n.key} x={x + labelDx[i]} y={y + labelDy[i]} textAnchor={labelAnchor[i]} className="triLabel">
+              <tspan x={x + labelDx[i]} dy="0" className="triLabelName">
+                {n.label}
+              </tspan>
+              <tspan x={x + labelDx[i]} dy="13" className="triLabelScore">
+                {n.score} · {n.grade}
+              </tspan>
+            </text>
+          );
+        })}
+        <text x={cx} y={cy + 4} textAnchor="middle" className="triCenterGrade">
+          {grade}
+        </text>
+      </svg>
     </div>
   );
 }
