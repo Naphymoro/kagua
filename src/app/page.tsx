@@ -1358,7 +1358,7 @@ function Journal({
           <Fact
             label="JIF"
             value={journal.impactFactor == null ? "Not verified" : String(journal.impactFactor)}
-            hint={journal.impactFactor == null ? "Clarivate JIF is licensed data with no free API — Kagua will not guess it. Upload your institution's JCR export to verify it, or see the OpenAlex percentile below for a free proxy." : undefined}
+            hint={journal.impactFactor == null ? "Clarivate JIF has no free API, and publisher pages actively block automated requests for it (tested against ScienceDirect: blocked, not scraped — see the Manual for the actual response). Upload your institution's JCR export to verify it, or see the OpenAlex percentile below for a free proxy." : undefined}
           />
           <Fact label="OpenAlex percentile" value={journal.citationPercentile == null ? "No sample" : `${journal.citationPercentile}th`} hint="This journal's 2-year mean citedness ranked against the other candidates in this search — a free, real signal, not a substitute for JIF." />
           <Fact label="APC" value={journal.apcDisplay || "Unknown"} />
@@ -1454,23 +1454,22 @@ function SimilarWorkPanel({ works, africa }: { works?: SimilarWork[]; africa?: A
           </span>
         )}
       </div>
-      <ul className="similarList">
+      <ol className="similarList">
         {works.map((w, i) => (
           <li key={`${w.title}-${i}`}>
+            <i>{i + 1}</i>
             {w.url ? (
-              <a href={w.url} target="_blank" rel="noreferrer">
+              <a href={w.url} target="_blank" rel="noreferrer" title={w.title}>
                 {w.title}
               </a>
             ) : (
-              <span>{w.title}</span>
+              <span title={w.title}>{w.title}</span>
             )}
-            <span className="similarMeta">
-              {w.year || "Year unknown"}
-              {w.hasAfricaAuthor ? " · Africa-affiliated author" : ""}
-            </span>
+            {w.hasAfricaAuthor && <b title="Africa-affiliated author">AF</b>}
+            <small>{w.year || "—"}</small>
           </li>
         ))}
-      </ul>
+      </ol>
       <p className="mutedCopy similarNote">
         From a live search of this journal&apos;s own back catalogue for work matching your manuscript — a sample, not a full census.
       </p>

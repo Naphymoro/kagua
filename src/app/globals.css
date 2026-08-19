@@ -538,11 +538,22 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
 
 .similarPanel { margin-top: 12px; padding: 13px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); }
 .similarPanelEmpty p { margin: 8px 0 0; }
-.similarList { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 7px; }
-.similarList li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 8px 10px; border-radius: 7px; background: var(--surface); border: 1px solid var(--line); }
-.similarList a { color: var(--accent); font-size: 12.5px; font-weight: 650; text-decoration: none; }
+/* One line per work, not a card per work — a numeral, the (truncating)
+   title, an optional Africa-authored flag, and the year, separated by a
+   hairline instead of individual borders/padding-heavy boxes. */
+.similarList { list-style: none; margin: 8px 0 0; padding: 0; }
+.similarList li { display: flex; align-items: center; gap: 8px; padding: 6px 2px; border-top: 1px solid var(--line); font-size: 12.5px; }
+.similarList li:first-child { border-top: 0; }
+.similarList i { flex: 0 0 auto; width: 16px; font-style: normal; color: var(--muted); font-size: 11px; font-weight: 700; text-align: right; }
+.similarList a,
+.similarList span {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--ink); font-weight: 600; text-decoration: none;
+}
+.similarList a { color: var(--accent); }
 .similarList a:hover { text-decoration: underline; }
-.similarList span:not(.similarMeta) { font-size: 12.5px; font-weight: 650; color: var(--ink); }
+.similarList b { flex: 0 0 auto; padding: 1px 5px; border-radius: 999px; background: var(--soft); color: var(--accent); font-size: 9px; font-weight: 800; }
+.similarList small { flex: 0 0 auto; color: var(--muted); font-size: 11px; font-weight: 600; }
 .similarMeta { margin-left: auto; color: var(--muted); font-size: 10.5px; white-space: nowrap; }
 .similarNote { margin-top: 10px; }
 
