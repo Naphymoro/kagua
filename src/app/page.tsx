@@ -1122,6 +1122,13 @@ function Journal({
           </div>
         </div>
 
+        {journal.relevanceCheck?.checked && !journal.relevanceCheck.relevant && (
+          <div className="relevanceFlag">
+            <b>LLM field-relevance check: possible mismatch</b>
+            <span>{journal.relevanceCheck.reason || "The reviewing model flagged this journal's field as a likely mismatch for this manuscript. The deterministic scope-fit score above still cleared its floor — use researcher judgment before shortlisting."}</span>
+          </div>
+        )}
+
         <div className="scoreRibbon">
           <Score name="KTS" value={journal.trilemma} />
           <Score name="Scope" value={journal.fit} />
@@ -1133,8 +1140,18 @@ function Journal({
         <div className="factsGrid">
           <Fact label="Eligibility" value={journal.eligibility?.source || journal.dhet} />
           <Fact label="Matched by" value={journal.eligibility?.matchedBy || "ISSN"} />
-          <Fact label="Quartile" value={journal.quartile} />
-          <Fact label="JIF" value={journal.impactFactor == null ? "Not verified" : String(journal.impactFactor)} />
+          <Fact label="Shared terms" value={String(journal.sharedTerms)} hint="Substantive words this journal's evidence shares with your manuscript — the topical gate behind the Scope score." />
+          <Fact
+            label="Quartile"
+            value={journal.quartile}
+            hint={journal.quartile === "Unverified" ? "No licensed ranking source configured. Upload your library's JCR/Scopus export on this page to unlock a verified quartile." : undefined}
+          />
+          <Fact
+            label="JIF"
+            value={journal.impactFactor == null ? "Not verified" : String(journal.impactFactor)}
+            hint={journal.impactFactor == null ? "Clarivate JIF is licensed data with no free API — Kagua will not guess it. Upload your institution's JCR export to verify it, or see the OpenAlex percentile below for a free proxy." : undefined}
+          />
+          <Fact label="OpenAlex percentile" value={journal.citationPercentile == null ? "No sample" : `${journal.citationPercentile}th`} hint="This journal's 2-year mean citedness ranked against the other candidates in this search — a free, real signal, not a substitute for JIF." />
           <Fact label="APC" value={journal.apcDisplay || "Unknown"} />
           <Fact label="Works" value={journal.matchedWorks.toLocaleString()} />
           <Fact label="Africa-authored" value={formatAfricaShare(journal.africaAuthorship)} />
@@ -1187,11 +1204,12 @@ function Journal({
   );
 }
 
-function Fact({ label, value }: { label: string; value: string }) {
+function Fact({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <span>
+    <span className={hint ? "factHinted" : undefined} title={hint}>
       {label}
       <b>{value}</b>
+      {hint && <small>{hint}</small>}
     </span>
   );
 }
@@ -1203,7 +1221,20 @@ function formatAfricaShare(signal?: AfricaAuthorshipSignal | null) {
 }
 
 function SimilarWorkPanel({ works, africa }: { works?: SimilarWork[]; africa?: AfricaAuthorshipSignal | null }) {
-  if (!works || !works.length) return null;
+  if (!works || !works.length) {
+    return (
+      <div className="similarPanel similarPanelEmpty">
+        <div className="cardHead">
+          <span className="eyebrow">SIMILAR RECENT WORK IN THIS JOURNAL</span>
+        </div>
+        <p className="mutedCopy">
+          No similar recent articles could be resolved for this journal in the live OpenAlex search just now — the
+          journal's OpenAlex source may be unindexed, or the live lookup timed out. This is a gap in this specific
+          enrichment step, not evidence the journal lacks relevant work.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="similarPanel">
       <div className="cardHead">

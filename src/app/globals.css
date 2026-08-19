@@ -448,12 +448,20 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
   color: var(--muted); font-size: 10px; text-transform: uppercase; font-weight: 650;
 }
 .factsGrid b { display: block; margin-top: 4px; color: var(--ink); font-size: 12px; text-transform: none; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.factsGrid span.factHinted { cursor: help; border: 1px dashed var(--line-strong); }
+.factsGrid span.factHinted small { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; font-weight: 500; text-transform: none; line-height: 1.4; }
 
 .why { margin: 14px 0 0; font-size: 13px; line-height: 1.65; color: var(--ink-soft); }
 .riskNote {
   margin: 9px 0 0; padding: 11px 12px; border-left: 3px solid var(--warn); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   background: var(--warn-soft); color: var(--ink-soft); font-size: 12px; line-height: 1.55;
 }
+.relevanceFlag {
+  margin: 12px 0 0; padding: 12px 13px; border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--line));
+  border-radius: var(--radius-sm); background: var(--danger-soft);
+}
+.relevanceFlag b { display: block; color: var(--danger); font-size: 12px; font-weight: 800; }
+.relevanceFlag span { display: block; margin-top: 5px; color: var(--ink-soft); font-size: 12px; line-height: 1.55; }
 
 .trilemmaPanel { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 18px; align-items: center; margin: 14px 0 0; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-2); }
 .trilemmaSide { min-width: 0; }
@@ -495,6 +503,7 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
 .evidenceRow i { font-style: normal; color: var(--accent); font-size: 10px; font-weight: 700; }
 
 .similarPanel { margin-top: 12px; padding: 13px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); }
+.similarPanelEmpty p { margin: 8px 0 0; }
 .similarList { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 7px; }
 .similarList li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 8px 10px; border-radius: 7px; background: var(--surface); border: 1px solid var(--line); }
 .similarList a { color: var(--accent); font-size: 12.5px; font-weight: 650; text-decoration: none; }
