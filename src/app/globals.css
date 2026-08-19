@@ -254,16 +254,34 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
   padding: 20px; position: sticky; top: 84px;
   max-height: calc(100vh - 100px); overflow: auto; scrollbar-width: thin;
 }
+/* Each step's content is short by design (one form section at a time), so
+   this sidebar mostly won't need its own internal scrollbar any more — the
+   overflow:auto above stays only as a safety net for an unusually long
+   abstract, not as the primary way to reach the rest of the form. */
 .workflowProgress { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 18px; }
 .stepPill {
-  min-height: 30px; display: flex; align-items: center; justify-content: center;
+  min-height: 40px; display: flex; align-items: center; justify-content: center; gap: 7px;
   border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2);
-  color: var(--muted); font-size: 11px; font-weight: 700;
+  color: var(--muted); font-size: 11px; font-weight: 700; cursor: pointer;
+  transition: border-color .15s, background .15s, color .15s;
 }
-.stepPill.active { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: var(--soft); color: var(--accent); }
+.stepPill:hover { border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); color: var(--ink); }
+.stepPill i {
+  flex: 0 0 auto; width: 17px; height: 17px; display: grid; place-items: center; border-radius: 999px;
+  background: var(--surface); color: var(--muted); font-style: normal; font-size: 9px; font-weight: 800;
+}
+.stepPill.done i { background: var(--accent); color: var(--paper); }
+.stepPill.current {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--soft); color: var(--accent);
+  box-shadow: 0 0 0 3px var(--soft);
+}
+.stepPill.current i { background: var(--accent); color: var(--paper); }
 
-.formSection { padding: 18px 0; border-top: 1px solid var(--line); }
-.formSection:first-of-type { border-top: 0; padding-top: 0; }
+.formSection { padding: 4px 0 18px; }
+.stepNav { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+.stepNav .secondaryButton { width: auto; padding: 0 14px; }
+.stepNavCount { color: var(--muted); font-size: 11px; font-weight: 650; }
+.stepNavDone { color: var(--accent); font-size: 11px; font-weight: 700; }
 .sectionTitle { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .sectionTitle span {
   width: 26px; height: 26px; display: grid; place-items: center; border-radius: var(--radius-sm);

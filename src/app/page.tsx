@@ -159,6 +159,7 @@ export default function Home() {
   const [seen, setSeen] = useState<string[]>([]);
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [view, setView] = useState<"recommendations" | "explorer">("recommendations");
+  const [step, setStep] = useState(0);
   const [sort, setSort] = useState<SortKey>("kpos");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -449,6 +450,12 @@ export default function Home() {
   }
 
   const canSubmit = Boolean(title.trim() && abstract.trim() && !busy);
+  const stepMeta = [
+    { label: "Manuscript", done: readiness >= 32 },
+    { label: "Authority", done: eligibilityPolicy === "dhet" || eligibilityPolicy === "all" || Boolean(customList) },
+    { label: "Limits", done: metrics.apc || metrics.quartile || metrics.impactFactor },
+    { label: "Engine", done: mode !== "none" },
+  ];
 
   return (
     <main className="shell hunterShell">
@@ -475,14 +482,20 @@ export default function Home() {
 
       <section className="workspace hunterWorkspace">
         <form className="card inputCard workflowCard" onSubmit={submit}>
-          <div className="workflowProgress" aria-label="Workflow progress">
-            <StepPill label="Manuscript" active={readiness >= 32} />
-            <StepPill label="Authority" active={eligibilityPolicy === "dhet" || eligibilityPolicy === "all" || Boolean(customList)} />
-            <StepPill label="Limits" active={metrics.apc || metrics.quartile || metrics.impactFactor} />
-            <StepPill label="Review" active={Boolean(data)} />
+          <div className="workflowProgress" role="tablist" aria-label="Manuscript setup steps">
+            {stepMeta.map((s, i) => (
+              <StepPill
+                key={s.label}
+                label={s.label}
+                index={i}
+                current={step === i}
+                done={i < step || s.done}
+                onSelect={() => setStep(i)}
+              />
+            ))}
           </div>
 
-          <section className="formSection">
+          <section className="formSection" hidden={step !== 0}>
             <div className="sectionTitle">
               <span>01</span>
               <h2>Manuscript signal</h2>
@@ -516,7 +529,7 @@ export default function Home() {
             </div>
           </section>
 
-          <section className="formSection">
+          <section className="formSection" hidden={step !== 1}>
             <div className="sectionTitle">
               <span>02</span>
               <h2>Eligibility authority</h2>
@@ -570,7 +583,7 @@ export default function Home() {
             )}
           </section>
 
-          <section className="formSection">
+          <section className="formSection" hidden={step !== 2}>
             <div className="sectionTitle">
               <span>03</span>
               <h2>Journal limits</h2>
@@ -628,7 +641,7 @@ export default function Home() {
             </label>
           </section>
 
-          <section className="formSection">
+          <section className="formSection" hidden={step !== 3}>
             <div className="sectionTitle">
               <span>04</span>
               <h2>Intelligence engine</h2>
@@ -686,6 +699,22 @@ export default function Home() {
               </div>
             )}
           </section>
+
+          <div className="stepNav">
+            <button type="button" className="secondaryButton" disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))}>
+              ← Back
+            </button>
+            <span className="stepNavCount">
+              Step {step + 1} of {stepMeta.length}
+            </span>
+            {step < stepMeta.length - 1 ? (
+              <button type="button" className="secondaryButton" onClick={() => setStep((s) => Math.min(stepMeta.length - 1, s + 1))}>
+                Continue →
+              </button>
+            ) : (
+              <span className="stepNavDone">Last step</span>
+            )}
+          </div>
 
           <div className="formFooter">
             <button className="primary" disabled={!canSubmit}>
@@ -822,8 +851,31 @@ function HeroMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StepPill({ label, active }: { label: string; active: boolean }) {
-  return <span className={`stepPill ${active ? "active" : ""}`}>{label}</span>;
+function StepPill({
+  label,
+  index,
+  current,
+  done,
+  onSelect,
+}: {
+  label: string;
+  index: number;
+  current: boolean;
+  done: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={current}
+      className={`stepPill ${current ? "current" : ""} ${done ? "done" : ""}`}
+      onClick={onSelect}
+    >
+      <i>{done && !current ? "✓" : index + 1}</i>
+      {label}
+    </button>
+  );
 }
 
 function SmallMetric({ label, value }: { label: string; value: string }) {
