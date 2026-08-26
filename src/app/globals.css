@@ -282,25 +282,45 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
 }
 .stepPill.current i { background: var(--accent); color: var(--paper); }
 
-.filterDeck { padding: 14px; display: grid; gap: 12px; }
-.filterDeckHeader {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center;
+.refinementDock {
+  position: relative; z-index: 25; display: grid; gap: 8px;
+  padding: 0 4px 4px; min-width: 0;
 }
-.filterDeckHeader h2 { margin: 2px 0 0; font-size: 18px; font-weight: 650; }
+.refinementRail {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 76%, var(--paper));
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--shadow) 64%, transparent);
+}
+.refinementTitle { min-width: 132px; }
+.refinementTitle b {
+  display: block; margin-top: 2px; color: var(--ink-soft);
+  font-size: 12px; font-weight: 600; line-height: 1.2;
+}
 .filterActions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
-.filterActions .textButton { width: auto; min-width: 108px; }
+.filterActions .textButton { width: auto; min-width: 80px; }
+.refinementActions .textButton {
+  height: 34px; padding: 0 11px; font-size: 12px;
+  background: transparent;
+}
 .activeFilterBar {
   display: flex; flex-wrap: wrap; gap: 7px; align-items: center;
   padding: 9px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2);
 }
+.refinementChips {
+  min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent;
+  flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+}
+.refinementChips::-webkit-scrollbar { display: none; }
 .activeFilterLabel {
   margin-right: 2px; color: var(--muted); font-size: 10px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase;
 }
 .activeFilter {
-  min-height: 30px; display: inline-flex; align-items: center; gap: 7px;
+  min-height: 30px; display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto;
   border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
   border-radius: var(--radius-full); background: var(--surface); color: var(--ink);
-  padding: 4px 8px; font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap;
+  padding: 4px 8px; font-size: 11px; font-weight: 600; line-height: 1.15; white-space: nowrap;
+  max-width: min(360px, 42vw); overflow: hidden; text-overflow: ellipsis;
 }
 .activeFilter b { color: var(--accent); font-size: 9px; text-transform: uppercase; }
 .activeFilter.removable { cursor: pointer; }
@@ -310,29 +330,47 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
   background: var(--surface-2); color: var(--muted); font-style: normal; font-size: 10px; font-weight: 750;
 }
 .mutedFilter { color: var(--muted); border-color: var(--line); }
-.filterPanels { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; align-items: start; }
-.filterPanel {
-  min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-sm);
-  background: var(--surface); overflow: hidden;
+.refinementMenus {
+  position: relative; display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start;
+  padding-inline: 2px;
 }
-.filterPanel[open] {
-  grid-column: span 2; border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
-  background: color-mix(in srgb, var(--soft) 32%, var(--surface));
+.refineMenu { position: relative; min-width: min(180px, 100%); }
+.refineMenuButton {
+  width: 100%; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--ink);
+  padding: 8px 10px; text-align: left; cursor: pointer;
+  transition: border-color .15s, background .15s, color .15s, box-shadow .15s;
 }
-.filterPanel summary {
-  min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 11px 12px; cursor: pointer; list-style: none;
+.refineMenuButton:hover {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
+  background: color-mix(in srgb, var(--soft) 34%, var(--surface));
 }
-.filterPanel summary::-webkit-details-marker { display: none; }
-.filterPanel summary span { min-width: 0; display: block; }
-.filterPanel summary b, .filterPanel summary small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.filterPanel summary b { font-size: 13px; font-weight: 650; }
-.filterPanel summary small { margin-top: 3px; color: var(--muted); font-size: 11px; font-weight: 500; }
-.filterPanel summary i {
-  flex: 0 0 auto; color: var(--accent); font-size: 10px; font-style: normal; font-weight: 700; text-transform: uppercase;
+.refineMenu.isOpen .refineMenuButton {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: var(--soft); color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent);
 }
-.filterPanelBody { padding: 0 12px 12px; border-top: 1px solid var(--line); }
-.filterPanelBody label:first-child { margin-top: 12px; }
+.refineMenuButton span { min-width: 0; display: block; }
+.refineMenuButton b, .refineMenuButton small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.refineMenuButton b { font-size: 12px; font-weight: 650; }
+.refineMenuButton small { margin-top: 2px; color: var(--muted); font-size: 10px; font-weight: 500; }
+.refineMenuButton i {
+  flex: 0 0 auto; color: var(--accent); font-size: 9px; font-style: normal;
+  font-weight: 750; letter-spacing: .04em; text-transform: uppercase;
+}
+.advancedRefineMenu .refineMenuButton {
+  border-style: dashed; background: transparent; color: var(--ink-soft);
+}
+.refineMenuPanel {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 45;
+  width: min(560px, calc(100vw - 48px)); max-height: min(70vh, 620px); overflow: auto;
+  padding: 14px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
+  border-radius: var(--radius-md); background: var(--surface);
+  box-shadow: 0 18px 48px var(--shadow-lg);
+}
+.refineMenu:nth-last-child(-n+2) .refineMenuPanel { left: auto; right: 0; }
+.refineMenuPanel label:first-child, .refineMenuPanel .metricAccordion:first-child { margin-top: 0; }
 
 .scanBar {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center;
@@ -530,6 +568,7 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
 .manuscriptCard { padding: 20px; }
 .manuscriptCard .cardHead { margin-bottom: 4px; }
 .manuscriptCard .sampleButton { margin: 0; }
+.manuscriptCard .refinementDock { margin-top: 12px; }
 .searchCardHeader {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center;
   margin-bottom: 4px;
@@ -910,8 +949,11 @@ tbody tr:hover { background: var(--soft); }
   .searchCardHeader { grid-template-columns: 1fr; }
   .searchCardActions { justify-content: stretch; }
   .scanControl { min-width: 0; flex: 1; }
-  .filterPanels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .filterPanel[open] { grid-column: span 2; }
+  .refinementRail { grid-template-columns: 1fr; }
+  .refinementTitle { min-width: 0; display: flex; align-items: center; gap: 10px; }
+  .refinementTitle b { margin-top: 0; }
+  .refinementActions { justify-content: flex-start; }
+  .activeFilter { max-width: min(420px, 78vw); }
   .launchPanel, .empty { grid-template-columns: 1fr; padding: 28px; }
   .readinessPanel { grid-template-columns: 220px 1fr; align-items: center; }
   .registryGrid { grid-template-columns: 1fr; }
@@ -936,6 +978,8 @@ tbody tr:hover { background: var(--soft); }
   .decisionToolbar, .decisionFooter { grid-template-columns: 1fr; display: grid; }
   .rankHeader { display: grid; gap: 10px; }
   .providerGrid { grid-template-columns: 1fr; }
+  .refinementMenus { display: grid; grid-template-columns: 1fr 1fr; }
+  .refineMenu { min-width: 0; }
   .registryMast { align-items: start; flex-direction: column; }
   .registryStats { width: 100%; overflow: auto; }
 }
@@ -944,13 +988,18 @@ tbody tr:hover { background: var(--soft); }
   .shell { padding: 0 14px 40px; }
   .hunterShell .productHero h1 { font-size: 34px; }
   .grid2, .voteGrid, .manualGrid { grid-template-columns: 1fr; }
-  .searchCardActions, .scanControl, .filterDeckHeader, .filterActions { display: grid; grid-template-columns: 1fr; }
+  .searchCardActions, .scanControl, .filterActions { display: grid; grid-template-columns: 1fr; }
   .filterActions .textButton, .scanControl .scanButton { width: 100%; }
-  .filterPanels { grid-template-columns: 1fr; }
-  .filterPanel[open] { grid-column: auto; }
+  .refinementRail { padding: 9px; }
+  .refinementMenus { grid-template-columns: 1fr; }
+  .refinementChips { flex-wrap: wrap; overflow: visible; }
+  .refineMenuPanel {
+    position: static; width: 100%; max-height: none; margin-top: 8px;
+    box-shadow: 0 10px 28px var(--shadow);
+  }
   .activeFilterBar { align-items: stretch; }
   .activeFilterLabel { width: 100%; }
-  .activeFilter { white-space: normal; justify-content: space-between; }
+  .activeFilter { max-width: 100%; white-space: normal; justify-content: space-between; }
   .manuscriptModeToggle, .ocrStatus { grid-template-columns: 1fr; }
   .segmented.four { grid-template-columns: 1fr 1fr; }
   .journal { padding: 15px; }
