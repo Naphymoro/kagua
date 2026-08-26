@@ -1,7 +1,10 @@
 node_modules
 .next
+.open-next
+.wrangler
 .env
 .env.local
+cloudflare-env.d.ts
 .DS_Store
 npm-debug.log*
 dev-server*.log

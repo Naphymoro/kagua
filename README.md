@@ -77,3 +77,27 @@ npm start
 ```
 
 Health endpoint: `/api/health`.
+
+### Cloudflare Workers deployment
+
+Kagua can deploy to Cloudflare's free Workers tier through the OpenNext Cloudflare adapter. The repo includes `wrangler.jsonc` and `open-next.config.ts`.
+
+```bash
+npm install
+npm run build:cloudflare
+npx wrangler deploy --dry-run
+npm run deploy:cloudflare
+```
+
+Required Cloudflare runtime secrets:
+
+- `AUTH_SECRET`
+- `AUTH_URL` set to the deployed Cloudflare URL
+- `AUTH_GOOGLE_ID`
+- `AUTH_GOOGLE_SECRET`
+
+Add the Cloudflare Auth.js callback URL to the Google OAuth client:
+
+```text
+https://<cloudflare-host>/api/auth/callback/google
+```

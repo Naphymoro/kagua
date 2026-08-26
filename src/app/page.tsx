@@ -1438,7 +1438,7 @@ function SimilarWorkPanel({ works, africa }: { works?: SimilarWork[]; africa?: A
         </div>
         <p className="mutedCopy">
           No similar recent articles could be resolved for this journal in the live OpenAlex search just now — the
-          journal's OpenAlex source may be unindexed, or the live lookup timed out. This is a gap in this specific
+          journal&apos;s OpenAlex source may be unindexed, or the live lookup timed out. This is a gap in this specific
           enrichment step, not evidence the journal lacks relevant work.
         </p>
       </div>
