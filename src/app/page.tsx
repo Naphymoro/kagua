@@ -50,7 +50,8 @@ type Draft = {
   quartilePreset: string;
   jifMin: string;
   jifMax: string;
-  publisherFilter: string;
+  publisherFilters: string[];
+  publisherFilter?: string;
   eligibilityPolicy: EligibilityPolicy;
   mode: LlmMode;
   provider: LlmProviderId;
@@ -153,6 +154,20 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 ** power).toFixed(power ? 1 : 0)} ${units[power]}`;
 }
 
+async function readApiJson<T>(response: Response, fallbackError: string): Promise<(T & { error?: string }) | { error?: string }> {
+  const text = await response.text().catch(() => "");
+  if (!text.trim()) return response.ok ? {} : { error: fallbackError };
+  try {
+    return JSON.parse(text) as T & { error?: string };
+  } catch {
+    return {
+      error: response.ok
+        ? "Kagua received an unreadable response. Please retry the scan."
+        : fallbackError,
+    };
+  }
+}
+
 export default function Home() {
   // Every field below starts at a fixed default — the same one the server
   // renders — rather than reading the saved draft during the initial
@@ -178,7 +193,7 @@ export default function Home() {
   const [speedLocked, setSpeedLocked] = useState(false);
   const [metrics, setMetrics] = useState<MetricPreferences>({ apc: true, quartile: true, impactFactor: true });
   const [quartilePreset, setQuartilePreset] = useState("any");
-  const [publisherFilter, setPublisherFilter] = useState("");
+  const [publisherFilters, setPublisherFilters] = useState<string[]>([]);
   const [jifMin, setJifMin] = useState("");
   const [jifMax, setJifMax] = useState("");
   const [eligibilityPolicy, setEligibilityPolicy] = useState<EligibilityPolicy>("dhet");
@@ -252,7 +267,11 @@ export default function Home() {
     if (draft.speedLocked) setSpeedLocked(Boolean(draft.speedLocked));
     if (draft.metrics) setMetrics(draft.metrics);
     if (draft.quartilePreset) setQuartilePreset(draft.quartilePreset);
-    if (draft.publisherFilter) setPublisherFilter(draft.publisherFilter);
+    if (Array.isArray(draft.publisherFilters)) {
+      setPublisherFilters(draft.publisherFilters.filter(Boolean));
+    } else if (draft.publisherFilter) {
+      setPublisherFilters([draft.publisherFilter]);
+    }
     if (draft.jifMin) setJifMin(draft.jifMin);
     if (draft.jifMax) setJifMax(draft.jifMax);
     if (draft.eligibilityPolicy) setEligibilityPolicy(draft.eligibilityPolicy);
@@ -283,7 +302,8 @@ export default function Home() {
       days,
       metrics,
       quartilePreset,
-      publisherFilter,
+      publisherFilters,
+      publisherFilter: publisherFilters[0] || "",
       jifMin,
       jifMax,
       eligibilityPolicy,
@@ -314,7 +334,7 @@ export default function Home() {
     model,
     provider,
     quartilePreset,
-    publisherFilter,
+    publisherFilters,
     speedLocked,
     title,
   ]);
@@ -322,6 +342,15 @@ export default function Home() {
   const p = providers.find((x) => x.id === provider) || providers[0];
   const keywordList = useMemo(() => keywords.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean), [keywords]);
   const selectedQuartiles = quartileOptions.find((x) => x.value === quartilePreset)?.quartiles || [];
+  const selectedPublisherLabels = useMemo(
+    () => publisherFilters.map((value) => PUBLISHER_OPTIONS.find((option) => option.value === value)?.label || value),
+    [publisherFilters],
+  );
+  const publisherSummary = selectedPublisherLabels.length
+    ? selectedPublisherLabels.length === 1
+      ? selectedPublisherLabels[0]
+      : `${selectedPublisherLabels.length} publishers`
+    : "Any publisher";
   const abstractWords = useMemo(() => abstract.trim().split(/\s+/).filter(Boolean).length, [abstract]);
   const manuscriptWords = useMemo(() => manuscript.trim().split(/\s+/).filter(Boolean).length, [manuscript]);
   const readiness = useMemo(() => {
@@ -373,6 +402,15 @@ export default function Home() {
     }
   }
 
+  function addPublisherFilter(value: string) {
+    if (!value) return;
+    setPublisherFilters((current) => (current.includes(value) ? current : [...current, value]));
+  }
+
+  function removePublisherFilter(value: string) {
+    setPublisherFilters((current) => current.filter((item) => item !== value));
+  }
+
   function clearDraft() {
     setTitle("");
     setAbstract("");
@@ -384,7 +422,7 @@ export default function Home() {
     setDays(45);
     setSpeedLocked(false);
     setMetrics({ apc: true, quartile: true, impactFactor: true });
-    setPublisherFilter("");
+    setPublisherFilters([]);
     setQuartilePreset("any");
     setJifMin("");
     setJifMax("");
@@ -443,8 +481,11 @@ export default function Home() {
       const form = new FormData();
       form.append("file", file);
       const response = await fetch("/api/manuscript/extract", { method: "POST", body: form });
-      const body = await response.json().catch(() => ({}));
+      const body = await readApiJson<Partial<ManuscriptExtraction>>(response, "Could not extract manuscript text.");
       if (!response.ok) throw new Error(body.error || "Could not extract manuscript text.");
+      if (!("text" in body) || typeof body.text !== "string" || !body.text.trim()) {
+        throw new Error(body.error || "The extractor did not return readable manuscript text.");
+      }
       const extraction = body as ManuscriptExtraction;
       const extractedWords = extraction.text.trim().split(/\s+/).filter(Boolean).length;
       setManuscript(extraction.text);
@@ -490,7 +531,8 @@ export default function Home() {
       quartileSelection: metrics.quartile ? selectedQuartiles : [],
       impactFactorMin: metrics.impactFactor && jifMin !== "" ? Number(jifMin) : null,
       impactFactorMax: metrics.impactFactor && jifMax !== "" ? Number(jifMax) : null,
-      publisherFilter: publisherFilter || null,
+      publisherFilters,
+      publisherFilter: publisherFilters[0] || null,
       excludeJournalIds: exclude,
       batchSize: 5,
       explorerSize: 50,
@@ -504,8 +546,11 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload(exclude, selectedMode)),
     });
-    const body = await response.json();
+    const body = await readApiJson<AnalysisResponse>(response, "Kagua could not complete the scan. Please try again.");
     if (!response.ok) throw new Error(body.error || "Analysis failed");
+    if (!("journals" in body) || !Array.isArray(body.journals)) {
+      throw new Error(body.error || "Kagua returned an empty analysis response. Please retry the scan.");
+    }
     return body as AnalysisResponse;
   }
 
@@ -582,7 +627,7 @@ export default function Home() {
   );
   const stepMeta = [
     { label: "Authority", done: eligibilityPolicy === "dhet" || eligibilityPolicy === "all" || Boolean(customList) },
-    { label: "Publisher", done: Boolean(publisherFilter) },
+    { label: "Publisher", done: publisherFilters.length > 0 },
     { label: "Limits", done: metrics.apc || metrics.quartile || metrics.impactFactor },
     { label: "Engine", done: mode !== "none" },
   ];
@@ -603,6 +648,7 @@ export default function Home() {
         <div className="heroDeck" aria-label="Kagua operating status">
           <HeroMetric label="Authority" value={policyLabels[eligibilityPolicy]} />
           <HeroMetric label="Readiness" value={`${readiness}%`} />
+          <HeroMetric label="Publisher" value={publisherSummary} />
           <HeroMetric label="Batch" value={data ? `Top ${data.journals.length}` : "Ready"} />
           <button type="button" className="heroTheme" onClick={() => setTheme(theme === "light" ? "dark" : "light")}>
             {theme === "light" ? "Dark mode" : "Light mode"}
@@ -624,6 +670,20 @@ export default function Home() {
               />
             ))}
           </div>
+
+          <div className="scanBar" aria-live="polite">
+            <div>
+              <span className="eyebrow">SCAN CONTROL</span>
+              <b>{busy ? "Scanning evidence..." : canSubmit ? "Ready to hunt" : "Add manuscript signal"}</b>
+              <small>
+                {readiness}% ready · {publisherSummary} · {policyLabels[eligibilityPolicy]}
+              </small>
+            </div>
+            <button className="primary scanButton" disabled={!canSubmit}>
+              {busy ? "Scanning..." : "Start scan"}
+            </button>
+          </div>
+          {error && <p className="error scanError">{error}</p>}
 
           <section className="formSection" hidden={step !== 0}>
             <div className="sectionTitle">
@@ -685,10 +745,15 @@ export default function Home() {
               <h2>Publisher</h2>
             </div>
             <label>
-              Limit the search to one publisher
-              <select value={publisherFilter} onChange={(e) => setPublisherFilter(e.target.value)}>
-                <option value="">Any publisher (default)</option>
-                {PUBLISHER_OPTIONS.map((x) => (
+              Add publisher groups
+              <select
+                value=""
+                onChange={(e) => {
+                  addPublisherFilter(e.target.value);
+                }}
+              >
+                <option value="">Any publisher, or choose to add...</option>
+                {PUBLISHER_OPTIONS.filter((option) => !publisherFilters.includes(option.value)).map((x) => (
                   <option key={x.value} value={x.value}>
                     {x.label}
                   </option>
@@ -699,15 +764,40 @@ export default function Home() {
                 Elsevier.
               </small>
             </label>
-            {publisherFilter && (
-              <div className="authorityPanel">
+            <div className={publisherFilters.length ? "publisherChips" : "publisherEmpty"}>
+              {publisherFilters.length ? (
+                <>
+                  {publisherFilters.map((value) => {
+                    const label = PUBLISHER_OPTIONS.find((option) => option.value === value)?.label || value;
+                    return (
+                      <button
+                        type="button"
+                        key={value}
+                        className="publisherChip"
+                        onClick={() => removePublisherFilter(value)}
+                        aria-label={`Remove ${label}`}
+                      >
+                        <span>{label}</span>
+                        <i aria-hidden="true">x</i>
+                      </button>
+                    );
+                  })}
+                  <button type="button" className="textButton clearPublishers" onClick={() => setPublisherFilters([])}>
+                    Clear all
+                  </button>
+                </>
+              ) : (
+                <span>All publisher groups are included unless you add one or more here.</span>
+              )}
+            </div>
+            {publisherFilters.length > 0 && (
+              <div className="filterSummary">
                 <div>
-                  <b>Restricted to {PUBLISHER_OPTIONS.find((x) => x.value === publisherFilter)?.label}</b>
-                  <span>Every other publisher is excluded from this search, regardless of fit or quality.</span>
+                  <b>Matching any selected publisher</b>
+                  <span>
+                    Kagua will keep journals from {selectedPublisherLabels.join(", ")} and exclude the rest.
+                  </span>
                 </div>
-                <button type="button" className="secondaryButton" onClick={() => setPublisherFilter("")}>
-                  Clear
-                </button>
               </div>
             )}
           </section>
@@ -843,9 +933,6 @@ export default function Home() {
           </div>
 
           <div className="formFooter">
-            <button className="primary" disabled={!canSubmit}>
-              {busy ? "Running evidence pipeline..." : "Hunt first 5 journals"}
-            </button>
             <div className="inlineActions">
               <button type="button" className="textButton" onClick={fillDemo}>
                 Fill sample
@@ -854,7 +941,6 @@ export default function Home() {
                 Clear
               </button>
             </div>
-            {error && <p className="error">{error}</p>}
           </div>
         </form>
 
@@ -1088,6 +1174,11 @@ function ManuscriptCard({
   onDemo: () => void;
 }) {
   const activeWords = inputMode === "structured" ? abstractWords : manuscriptWords;
+  const inputModes: Array<{ value: InputMode; label: string; hint: string; icon: string }> = [
+    { value: "structured", label: "Title & abstract", hint: "Fast entry", icon: "T" },
+    { value: "upload", label: "Upload file", hint: "Best for manuscripts", icon: "U" },
+    { value: "paste", label: "Paste text", hint: "Clean text only", icon: "P" },
+  ];
   return (
     <section className="card manuscriptCard">
       <div className="cardHead">
@@ -1099,16 +1190,22 @@ function ManuscriptCard({
           Try sample manuscript
         </button>
       </div>
-      <div className="segmented manuscriptModeToggle" aria-label="Manuscript input mode">
-        <button type="button" className={inputMode === "structured" ? "active" : ""} onClick={() => setInputMode("structured")}>
-          Title &amp; abstract
-        </button>
-        <button type="button" className={inputMode === "upload" ? "active" : ""} onClick={() => setInputMode("upload")}>
-          Upload file
-        </button>
-        <button type="button" className={inputMode === "paste" ? "active" : ""} onClick={() => setInputMode("paste")}>
-          Paste text
-        </button>
+      <div className="manuscriptModeToggle" aria-label="Manuscript input mode">
+        {inputModes.map((option) => (
+          <button
+            type="button"
+            key={option.value}
+            className={inputMode === option.value ? "active" : ""}
+            onClick={() => setInputMode(option.value)}
+          >
+            <span className="modeIcon">{option.icon}</span>
+            <span className="modeText">
+              <b>{option.label}</b>
+              <small>{option.hint}</small>
+            </span>
+            <span className="modeCheck" aria-hidden="true" />
+          </button>
+        ))}
       </div>
       {inputMode === "structured" ? (
         <>
