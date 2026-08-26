@@ -80,16 +80,15 @@ function qx(v) {
 }
 
 let workbookBuffer;
-const controller = new AbortController();
-const timeout = setTimeout(() => {
-  try {
-    controller.abort();
-  } catch {
-    // Some runtimes surface abort as a thrown DOMException from the timer.
-  }
-}, Number.isFinite(FETCH_TIMEOUT_MS) ? FETCH_TIMEOUT_MS : 45000);
+const fetchTimeoutMs = Number.isFinite(FETCH_TIMEOUT_MS) ? FETCH_TIMEOUT_MS : 45000;
+let timeout;
 try {
-  const response = await fetch(SOURCE_URL, { headers: { 'User-Agent': 'Kagua/1.0 DHET index builder' }, signal: controller.signal });
+  const response = await Promise.race([
+    fetch(SOURCE_URL, { headers: { 'User-Agent': 'Kagua/1.0 DHET index builder' } }),
+    new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error(`DHET workbook fetch timed out after ${fetchTimeoutMs}ms`)), fetchTimeoutMs);
+    }),
+  ]);
   if (!response.ok) throw new Error(`DHET workbook fetch failed: ${response.status}`);
   workbookBuffer = Buffer.from(await response.arrayBuffer());
 } catch (error) {
@@ -100,7 +99,7 @@ try {
   }
   throw error;
 } finally {
-  clearTimeout(timeout);
+  if (timeout) clearTimeout(timeout);
 }
 
 const workbook = XLSX.read(workbookBuffer, { type: 'buffer' });
