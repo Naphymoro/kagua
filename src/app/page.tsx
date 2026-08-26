@@ -27,6 +27,7 @@ type Decision = { researcher: Vote; supervisor: Vote; note: string };
 type SortKey = "kpos" | "trilemma" | "fit" | "quality" | "affordability" | "speed" | "impactFactor";
 type InputMode = "structured" | "upload" | "paste";
 type UploadStatus = "idle" | "reading" | "ready" | "error";
+type FilterPanelKey = "authority" | "publisher" | "limits" | "engine";
 type ManuscriptUploadState = {
   status: UploadStatus;
   fileName: string;
@@ -219,7 +220,12 @@ export default function Home() {
   const [seen, setSeen] = useState<string[]>([]);
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [view, setView] = useState<"recommendations" | "explorer">("recommendations");
-  const [step, setStep] = useState(0);
+  const [openFilters, setOpenFilters] = useState<Record<FilterPanelKey, boolean>>({
+    authority: false,
+    publisher: false,
+    limits: false,
+    engine: false,
+  });
   const [sort, setSort] = useState<SortKey>("kpos");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -351,6 +357,8 @@ export default function Home() {
       ? selectedPublisherLabels[0]
       : `${selectedPublisherLabels.length} publishers`
     : "Any publisher";
+  const jifSummary =
+    jifMin && jifMax ? `${jifMin}-${jifMax}` : jifMin ? `>= ${jifMin}` : jifMax ? `<= ${jifMax}` : "";
   const abstractWords = useMemo(() => abstract.trim().split(/\s+/).filter(Boolean).length, [abstract]);
   const manuscriptWords = useMemo(() => manuscript.trim().split(/\s+/).filter(Boolean).length, [manuscript]);
   const readiness = useMemo(() => {
@@ -409,6 +417,28 @@ export default function Home() {
 
   function removePublisherFilter(value: string) {
     setPublisherFilters((current) => current.filter((item) => item !== value));
+  }
+
+  function resetFilters() {
+    setEligibilityPolicy("dhet");
+    setCustomList(null);
+    setPublisherFilters([]);
+    setBudget(2500);
+    setDays(45);
+    setSpeedLocked(false);
+    setMetrics({ apc: true, quartile: true, impactFactor: true });
+    setQuartilePreset("any");
+    setJifMin("");
+    setJifMax("");
+    setMode("godmode");
+    chooseProvider("deepseek");
+    setKeyOpen(false);
+    setOpenFilters({ authority: false, publisher: false, limits: false, engine: false });
+    setError("");
+  }
+
+  function setFilterPanelOpen(key: FilterPanelKey, open: boolean) {
+    setOpenFilters((current) => ({ ...current, [key]: open }));
   }
 
   function clearDraft() {
@@ -625,13 +655,6 @@ export default function Home() {
   const canSubmit = Boolean(
     (inputMode === "structured" ? title.trim() || abstract.trim() : manuscript.trim()) && !busy,
   );
-  const stepMeta = [
-    { label: "Authority", done: eligibilityPolicy === "dhet" || eligibilityPolicy === "all" || Boolean(customList) },
-    { label: "Publisher", done: publisherFilters.length > 0 },
-    { label: "Limits", done: metrics.apc || metrics.quartile || metrics.impactFactor },
-    { label: "Engine", done: mode !== "none" },
-  ];
-
   return (
     <main className="shell hunterShell">
       <section className="hero productHero">
@@ -656,295 +679,8 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="workspace hunterWorkspace">
-        <form className="card inputCard workflowCard" onSubmit={submit}>
-          <div className="workflowProgress" role="tablist" aria-label="Manuscript setup steps">
-            {stepMeta.map((s, i) => (
-              <StepPill
-                key={s.label}
-                label={s.label}
-                index={i}
-                current={step === i}
-                done={i < step || s.done}
-                onSelect={() => setStep(i)}
-              />
-            ))}
-          </div>
-
-          <div className="scanBar" aria-live="polite">
-            <div>
-              <span className="eyebrow">SCAN CONTROL</span>
-              <b>{busy ? "Scanning evidence..." : canSubmit ? "Ready to hunt" : "Add manuscript signal"}</b>
-              <small>
-                {readiness}% ready · {publisherSummary} · {policyLabels[eligibilityPolicy]}
-              </small>
-            </div>
-            <button className="primary scanButton" disabled={!canSubmit}>
-              {busy ? "Scanning..." : "Start scan"}
-            </button>
-          </div>
-          {error && <p className="error scanError">{error}</p>}
-
-          <section className="formSection" hidden={step !== 0}>
-            <div className="sectionTitle">
-              <span>01</span>
-              <h2>Eligibility authority</h2>
-            </div>
-            <label>
-              Journal list policy
-              <select value={eligibilityPolicy} onChange={(e) => setEligibilityPolicy(e.target.value as EligibilityPolicy)}>
-                <option value="dhet">DHET only (default)</option>
-                <option value="custom">University/institution list only</option>
-                <option value="dhet_or_custom">DHET OR uploaded list</option>
-                <option value="all">Open search</option>
-              </select>
-            </label>
-            <div className="authorityPanel">
-              <div>
-                <b>{policyLabels[eligibilityPolicy]}</b>
-                <span>
-                  {customList
-                    ? `${customList.entries.length.toLocaleString()} uploaded records available`
-                    : "Official DHET recognition remains the default gate."}
-                </span>
-              </div>
-              <Link href="/registry" className="secondaryButton">
-                DHET list
-              </Link>
-            </div>
-            <label>
-              Upload institution journal list
-              <small className="hint">
-                XLSX, XLS, CSV, TSV or TXT. Include Impact Factor / Quartile columns (e.g. a library&apos;s JCR export) and
-                Kagua treats them as verified metrics — DHET&apos;s own accreditation list carries neither.
-              </small>
-              <input type="file" accept=".xlsx,.xls,.csv,.tsv,.txt" onChange={(e) => uploadList(e.target.files?.[0] || null)} />
-            </label>
-            {listBusy && <p className="evidence">Reading uploaded journal list...</p>}
-            {customList && (
-              <div className="uploadSummary">
-                <span>{customList.name}</span>
-                <b>{customList.entries.length.toLocaleString()} journals</b>
-                <button
-                  type="button"
-                  className="textButton"
-                  onClick={() => {
-                    setCustomList(null);
-                    setEligibilityPolicy("dhet");
-                  }}
-                >
-                  Remove
-                </button>
-              </div>
-            )}
-          </section>
-
-          <section className="formSection" hidden={step !== 1}>
-            <div className="sectionTitle">
-              <span>02</span>
-              <h2>Publisher</h2>
-            </div>
-            <label>
-              Add publisher groups
-              <select
-                value=""
-                onChange={(e) => {
-                  addPublisherFilter(e.target.value);
-                }}
-              >
-                <option value="">Any publisher, or choose to add...</option>
-                {PUBLISHER_OPTIONS.filter((option) => !publisherFilters.includes(option.value)).map((x) => (
-                  <option key={x.value} value={x.value}>
-                    {x.label}
-                  </option>
-                ))}
-              </select>
-              <small className="hint">
-                Groups legal-entity variants together — Elsevier BV, Elsevier Inc and Elsevier Ltd all count as
-                Elsevier.
-              </small>
-            </label>
-            <div className={publisherFilters.length ? "publisherChips" : "publisherEmpty"}>
-              {publisherFilters.length ? (
-                <>
-                  {publisherFilters.map((value) => {
-                    const label = PUBLISHER_OPTIONS.find((option) => option.value === value)?.label || value;
-                    return (
-                      <button
-                        type="button"
-                        key={value}
-                        className="publisherChip"
-                        onClick={() => removePublisherFilter(value)}
-                        aria-label={`Remove ${label}`}
-                      >
-                        <span>{label}</span>
-                        <i aria-hidden="true">x</i>
-                      </button>
-                    );
-                  })}
-                  <button type="button" className="textButton clearPublishers" onClick={() => setPublisherFilters([])}>
-                    Clear all
-                  </button>
-                </>
-              ) : (
-                <span>All publisher groups are included unless you add one or more here.</span>
-              )}
-            </div>
-            {publisherFilters.length > 0 && (
-              <div className="filterSummary">
-                <div>
-                  <b>Matching any selected publisher</b>
-                  <span>
-                    Kagua will keep journals from {selectedPublisherLabels.join(", ")} and exclude the rest.
-                  </span>
-                </div>
-              </div>
-            )}
-          </section>
-
-          <section className="formSection" hidden={step !== 2}>
-            <div className="sectionTitle">
-              <span>03</span>
-              <h2>Journal limits</h2>
-            </div>
-            <div className="metricAccordion">
-              <MetricRow label="APC" checked={metrics.apc} onChange={(v) => setMetrics({ ...metrics, apc: v })}>
-                <label>
-                  Maximum APC (USD)
-                  <input type="number" min="0" value={budget} onChange={(e) => setBudget(Number(e.target.value))} />
-                </label>
-              </MetricRow>
-              <MetricRow label="Quartile" checked={metrics.quartile} onChange={(v) => setMetrics({ ...metrics, quartile: v })}>
-                <label>
-                  Allowed quartile range
-                  <select value={quartilePreset} onChange={(e) => setQuartilePreset(e.target.value)}>
-                    {quartileOptions.map((x) => (
-                      <option key={x.value} value={x.value}>
-                        {x.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </MetricRow>
-              <MetricRow
-                label="Impact Factor"
-                checked={metrics.impactFactor}
-                onChange={(v) => setMetrics({ ...metrics, impactFactor: v })}
-              >
-                <div className="grid2">
-                  <label>
-                    Minimum JIF
-                    <input type="number" min="0" step="0.1" value={jifMin} onChange={(e) => setJifMin(e.target.value)} />
-                  </label>
-                  <label>
-                    Maximum JIF
-                    <input type="number" min="0" step="0.1" value={jifMax} onChange={(e) => setJifMax(e.target.value)} />
-                  </label>
-                </div>
-              </MetricRow>
-            </div>
-            <label>
-              Desired first decision
-              <span className="rangeMeta">{days} days</span>
-              <input type="range" min="7" max="120" value={days} onChange={(e) => setDays(Number(e.target.value))} />
-            </label>
-            <label className="checkRow lockRow">
-              <input type="checkbox" checked={speedLocked} onChange={(e) => setSpeedLocked(e.target.checked)} />
-              <span>
-                <b>Use decision time as a hard filter</b>
-                <small>Otherwise speed remains a pathway signal, not an exclusion rule.</small>
-              </span>
-            </label>
-          </section>
-
-          <section className="formSection" hidden={step !== 3}>
-            <div className="sectionTitle">
-              <span>04</span>
-              <h2>Intelligence engine</h2>
-            </div>
-            <div className="segmented four engineModes" aria-label="LLM mode">
-              {(["godmode", "local", "provider", "none"] as LlmMode[]).map((x) => (
-                <button type="button" key={x} className={mode === x ? "active" : ""} onClick={() => setMode(x)}>
-                  {modeLabels[x]}
-                </button>
-              ))}
-            </div>
-            {mode !== "none" && mode !== "local" && (
-              <div className="modelPanel">
-                <div className="providerGrid">
-                  <label>
-                    Provider
-                    <select value={provider} onChange={(e) => chooseProvider(e.target.value as LlmProviderId)}>
-                      {providers.map((x) => (
-                        <option key={x.id} value={x.id}>
-                          {x.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Model
-                    <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="Model name" />
-                  </label>
-                </div>
-                <label>
-                  Base URL
-                  <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="OpenAI-compatible endpoint" />
-                </label>
-                <div className="keyActions">
-                  {p.keyUrl ? (
-                    <a className="secondaryButton" href={p.keyUrl} target="_blank" rel="noreferrer">
-                      Get key
-                    </a>
-                  ) : (
-                    <span className="secondaryButton mutedButton">Custom endpoint</span>
-                  )}
-                  <button type="button" className="secondaryButton" onClick={() => setKeyOpen(!keyOpen)}>
-                    {keyOpen ? "Hide key" : "Set key"}
-                  </button>
-                </div>
-                {keyOpen && (
-                  <input
-                    className="passwordField"
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="Session API key"
-                  />
-                )}
-              </div>
-            )}
-          </section>
-
-          <div className="stepNav">
-            <button type="button" className="secondaryButton" disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))}>
-              ← Back
-            </button>
-            <span className="stepNavCount">
-              Step {step + 1} of {stepMeta.length}
-            </span>
-            {step < stepMeta.length - 1 ? (
-              <button type="button" className="secondaryButton" onClick={() => setStep((s) => Math.min(stepMeta.length - 1, s + 1))}>
-                Continue →
-              </button>
-            ) : (
-              <span className="stepNavDone">Last step</span>
-            )}
-          </div>
-
-          <div className="formFooter">
-            <div className="inlineActions">
-              <button type="button" className="textButton" onClick={fillDemo}>
-                Fill sample
-              </button>
-              <button type="button" className="textButton" onClick={clearDraft}>
-                Clear
-              </button>
-            </div>
-          </div>
-        </form>
-
-        <section className="results resultStack" aria-live="polite">
+      <section className="hunterWorkspace">
+        <form className="searchForm" onSubmit={submit}>
           <ManuscriptCard
             inputMode={inputMode}
             setInputMode={setInputMode}
@@ -962,7 +698,367 @@ export default function Home() {
             manuscriptWords={manuscriptWords}
             keywordCount={keywordList.length}
             onDemo={fillDemo}
+            canSubmit={canSubmit}
+            busy={busy}
+            readiness={readiness}
+            publisherSummary={publisherSummary}
+            policy={policyLabels[eligibilityPolicy]}
+            error={error}
           />
+
+          <section id="journal-filters" className="card filterDeck" aria-label="Journal search filters">
+            <div className="filterDeckHeader">
+              <div>
+                <span className="eyebrow">FILTERS & ENGINE</span>
+                <h2>Refine the journal search</h2>
+              </div>
+              <div className="filterActions">
+                <button type="button" className="textButton" onClick={resetFilters}>
+                  Reset filters
+                </button>
+                <button type="button" className="textButton" onClick={clearDraft}>
+                  Clear search
+                </button>
+              </div>
+            </div>
+
+            <div className="activeFilterBar" aria-label="Active filters">
+              <span className="activeFilterLabel">Active filters</span>
+              <span className="activeFilter fixed">
+                <b>Authority</b>
+                {policyLabels[eligibilityPolicy]}
+              </span>
+              {publisherFilters.length ? (
+                publisherFilters.map((value) => {
+                  const label = PUBLISHER_OPTIONS.find((option) => option.value === value)?.label || value;
+                  return (
+                    <button
+                      type="button"
+                      key={value}
+                      className="activeFilter removable"
+                      onClick={() => removePublisherFilter(value)}
+                      aria-label={`Remove publisher filter ${label}`}
+                    >
+                      <b>Publisher</b>
+                      {label}
+                      <i aria-hidden="true">x</i>
+                    </button>
+                  );
+                })
+              ) : (
+                <span className="activeFilter mutedFilter">
+                  <b>Publisher</b>
+                  Any
+                </span>
+              )}
+              {metrics.apc && (
+                <button type="button" className="activeFilter removable" onClick={() => setMetrics({ ...metrics, apc: false })}>
+                  <b>APC</b>
+                  {`<= $${budget.toLocaleString()}`}
+                  <i aria-hidden="true">x</i>
+                </button>
+              )}
+              {metrics.quartile && selectedQuartiles.length > 0 && (
+                <button type="button" className="activeFilter removable" onClick={() => setQuartilePreset("any")}>
+                  <b>Quartile</b>
+                  {quartilePreset}
+                  <i aria-hidden="true">x</i>
+                </button>
+              )}
+              {metrics.impactFactor && jifSummary && (
+                <button type="button" className="activeFilter removable" onClick={() => { setJifMin(""); setJifMax(""); }}>
+                  <b>JIF</b>
+                  {jifSummary}
+                  <i aria-hidden="true">x</i>
+                </button>
+              )}
+              {speedLocked ? (
+                <button type="button" className="activeFilter removable" onClick={() => setSpeedLocked(false)}>
+                  <b>Decision</b>
+                  {`<= ${days} days`}
+                  <i aria-hidden="true">x</i>
+                </button>
+              ) : (
+                <span className="activeFilter mutedFilter">
+                  <b>Speed signal</b>
+                  {days} days
+                </span>
+              )}
+              <span className="activeFilter fixed">
+                <b>Engine</b>
+                {modeLabels[mode]}
+              </span>
+            </div>
+
+            <div className="filterPanels">
+              <details
+                className="filterPanel"
+                open={openFilters.authority || eligibilityPolicy !== "dhet" || Boolean(customList)}
+                onToggle={(e) => setFilterPanelOpen("authority", e.currentTarget.open)}
+              >
+                <summary>
+                  <span>
+                    <b>Authority</b>
+                    <small>{policyLabels[eligibilityPolicy]}</small>
+                  </span>
+                  <i>Edit</i>
+                </summary>
+                <div className="filterPanelBody">
+                  <label>
+                    Journal list policy
+                    <select value={eligibilityPolicy} onChange={(e) => setEligibilityPolicy(e.target.value as EligibilityPolicy)}>
+                      <option value="dhet">DHET only (default)</option>
+                      <option value="custom">University/institution list only</option>
+                      <option value="dhet_or_custom">DHET OR uploaded list</option>
+                      <option value="all">Open search</option>
+                    </select>
+                  </label>
+                  <div className="authorityPanel">
+                    <div>
+                      <b>{policyLabels[eligibilityPolicy]}</b>
+                      <span>
+                        {customList
+                          ? `${customList.entries.length.toLocaleString()} uploaded records available`
+                          : "Official DHET recognition remains the default gate."}
+                      </span>
+                    </div>
+                    <Link href="/registry" className="secondaryButton">
+                      DHET list
+                    </Link>
+                  </div>
+                  <label>
+                    Upload institution journal list
+                    <small className="hint">
+                      XLSX, XLS, CSV, TSV or TXT. Include Impact Factor / Quartile columns and Kagua treats them as
+                      verified metrics.
+                    </small>
+                    <input type="file" accept=".xlsx,.xls,.csv,.tsv,.txt" onChange={(e) => uploadList(e.target.files?.[0] || null)} />
+                  </label>
+                  {listBusy && <p className="evidence">Reading uploaded journal list...</p>}
+                  {customList && (
+                    <div className="uploadSummary">
+                      <span>{customList.name}</span>
+                      <b>{customList.entries.length.toLocaleString()} journals</b>
+                      <button
+                        type="button"
+                        className="textButton"
+                        onClick={() => {
+                          setCustomList(null);
+                          setEligibilityPolicy("dhet");
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </details>
+
+              <details
+                className="filterPanel"
+                open={openFilters.publisher || publisherFilters.length > 0}
+                onToggle={(e) => setFilterPanelOpen("publisher", e.currentTarget.open)}
+              >
+                <summary>
+                  <span>
+                    <b>Publisher</b>
+                    <small>{publisherSummary}</small>
+                  </span>
+                  <i>Edit</i>
+                </summary>
+                <div className="filterPanelBody">
+                  <label>
+                    Add publisher groups
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        addPublisherFilter(e.target.value);
+                      }}
+                    >
+                      <option value="">Any publisher, or choose to add...</option>
+                      {PUBLISHER_OPTIONS.filter((option) => !publisherFilters.includes(option.value)).map((x) => (
+                        <option key={x.value} value={x.value}>
+                          {x.label}
+                        </option>
+                      ))}
+                    </select>
+                    <small className="hint">
+                      Groups legal-entity variants together, so publisher filtering matches the group.
+                    </small>
+                  </label>
+                  <div className={publisherFilters.length ? "publisherChips" : "publisherEmpty"}>
+                    {publisherFilters.length ? (
+                      <>
+                        {publisherFilters.map((value) => {
+                          const label = PUBLISHER_OPTIONS.find((option) => option.value === value)?.label || value;
+                          return (
+                            <button
+                              type="button"
+                              key={value}
+                              className="publisherChip"
+                              onClick={() => removePublisherFilter(value)}
+                              aria-label={`Remove ${label}`}
+                            >
+                              <span>{label}</span>
+                              <i aria-hidden="true">x</i>
+                            </button>
+                          );
+                        })}
+                        <button type="button" className="textButton clearPublishers" onClick={() => setPublisherFilters([])}>
+                          Clear all
+                        </button>
+                      </>
+                    ) : (
+                      <span>All publisher groups are included unless you add one or more here.</span>
+                    )}
+                  </div>
+                  {publisherFilters.length > 0 && (
+                    <div className="filterSummary">
+                      <div>
+                        <b>Matching any selected publisher</b>
+                        <span>Kagua will keep journals from {selectedPublisherLabels.join(", ")} and exclude the rest.</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </details>
+
+              <details
+                className="filterPanel"
+                open={openFilters.limits || Boolean(jifSummary) || selectedQuartiles.length > 0 || speedLocked}
+                onToggle={(e) => setFilterPanelOpen("limits", e.currentTarget.open)}
+              >
+                <summary>
+                  <span>
+                    <b>Limits</b>
+                    <small>{metrics.apc ? `APC <= $${budget.toLocaleString()}` : "No APC limit"}</small>
+                  </span>
+                  <i>Edit</i>
+                </summary>
+                <div className="filterPanelBody">
+                  <div className="metricAccordion">
+                    <MetricRow label="APC" checked={metrics.apc} onChange={(v) => setMetrics({ ...metrics, apc: v })}>
+                      <label>
+                        Maximum APC (USD)
+                        <input type="number" min="0" value={budget} onChange={(e) => setBudget(Number(e.target.value))} />
+                      </label>
+                    </MetricRow>
+                    <MetricRow label="Quartile" checked={metrics.quartile} onChange={(v) => setMetrics({ ...metrics, quartile: v })}>
+                      <label>
+                        Allowed quartile range
+                        <select value={quartilePreset} onChange={(e) => setQuartilePreset(e.target.value)}>
+                          {quartileOptions.map((x) => (
+                            <option key={x.value} value={x.value}>
+                              {x.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </MetricRow>
+                    <MetricRow
+                      label="Impact Factor"
+                      checked={metrics.impactFactor}
+                      onChange={(v) => setMetrics({ ...metrics, impactFactor: v })}
+                    >
+                      <div className="grid2">
+                        <label>
+                          Minimum JIF
+                          <input type="number" min="0" step="0.1" value={jifMin} onChange={(e) => setJifMin(e.target.value)} />
+                        </label>
+                        <label>
+                          Maximum JIF
+                          <input type="number" min="0" step="0.1" value={jifMax} onChange={(e) => setJifMax(e.target.value)} />
+                        </label>
+                      </div>
+                    </MetricRow>
+                  </div>
+                  <label>
+                    Desired first decision
+                    <span className="rangeMeta">{days} days</span>
+                    <input type="range" min="7" max="120" value={days} onChange={(e) => setDays(Number(e.target.value))} />
+                  </label>
+                  <label className="checkRow lockRow">
+                    <input type="checkbox" checked={speedLocked} onChange={(e) => setSpeedLocked(e.target.checked)} />
+                    <span>
+                      <b>Use decision time as a hard filter</b>
+                      <small>Otherwise speed remains a pathway signal, not an exclusion rule.</small>
+                    </span>
+                  </label>
+                </div>
+              </details>
+
+              <details
+                className="filterPanel"
+                open={openFilters.engine || mode === "provider"}
+                onToggle={(e) => setFilterPanelOpen("engine", e.currentTarget.open)}
+              >
+                <summary>
+                  <span>
+                    <b>Engine</b>
+                    <small>{modeLabels[mode]}</small>
+                  </span>
+                  <i>Edit</i>
+                </summary>
+                <div className="filterPanelBody">
+                  <div className="segmented four engineModes" aria-label="LLM mode">
+                    {(["godmode", "local", "provider", "none"] as LlmMode[]).map((x) => (
+                      <button type="button" key={x} className={mode === x ? "active" : ""} onClick={() => setMode(x)}>
+                        {modeLabels[x]}
+                      </button>
+                    ))}
+                  </div>
+                  {mode !== "none" && mode !== "local" && (
+                    <div className="modelPanel">
+                      <div className="providerGrid">
+                        <label>
+                          Provider
+                          <select value={provider} onChange={(e) => chooseProvider(e.target.value as LlmProviderId)}>
+                            {providers.map((x) => (
+                              <option key={x.id} value={x.id}>
+                                {x.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          Model
+                          <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="Model name" />
+                        </label>
+                      </div>
+                      <label>
+                        Base URL
+                        <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="OpenAI-compatible endpoint" />
+                      </label>
+                      <div className="keyActions">
+                        {p.keyUrl ? (
+                          <a className="secondaryButton" href={p.keyUrl} target="_blank" rel="noreferrer">
+                            Get key
+                          </a>
+                        ) : (
+                          <span className="secondaryButton mutedButton">Custom endpoint</span>
+                        )}
+                        <button type="button" className="secondaryButton" onClick={() => setKeyOpen(!keyOpen)}>
+                          {keyOpen ? "Hide key" : "Set key"}
+                        </button>
+                      </div>
+                      {keyOpen && (
+                        <input
+                          className="passwordField"
+                          type="password"
+                          value={apiKey}
+                          onChange={(e) => setApiKey(e.target.value)}
+                          placeholder="Session API key"
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
+              </details>
+            </div>
+          </section>
+        </form>
+
+        <section className="results resultStack" aria-live="polite">
           {!data ? (
             <LaunchPanel
               readiness={readiness}
@@ -1080,33 +1176,6 @@ function HeroMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StepPill({
-  label,
-  index,
-  current,
-  done,
-  onSelect,
-}: {
-  label: string;
-  index: number;
-  current: boolean;
-  done: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={current}
-      className={`stepPill ${current ? "current" : ""} ${done ? "done" : ""}`}
-      onClick={onSelect}
-    >
-      <i>{done && !current ? "✓" : index + 1}</i>
-      {label}
-    </button>
-  );
-}
-
 function SmallMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="smallMetric">
@@ -1155,6 +1224,12 @@ function ManuscriptCard({
   manuscriptWords,
   keywordCount,
   onDemo,
+  canSubmit,
+  busy,
+  readiness,
+  publisherSummary,
+  policy,
+  error,
 }: {
   inputMode: InputMode;
   setInputMode: (v: InputMode) => void;
@@ -1172,6 +1247,12 @@ function ManuscriptCard({
   manuscriptWords: number;
   keywordCount: number;
   onDemo: () => void;
+  canSubmit: boolean;
+  busy: boolean;
+  readiness: number;
+  publisherSummary: string;
+  policy: string;
+  error: string;
 }) {
   const activeWords = inputMode === "structured" ? abstractWords : manuscriptWords;
   const inputModes: Array<{ value: InputMode; label: string; hint: string; icon: string }> = [
@@ -1181,15 +1262,36 @@ function ManuscriptCard({
   ];
   return (
     <section className="card manuscriptCard">
-      <div className="cardHead">
+      <div className="searchCardHeader">
         <div>
           <span className="eyebrow">01 · MANUSCRIPT SIGNAL</span>
           <h2>What are you submitting?</h2>
         </div>
-        <button type="button" className="secondaryButton sampleButton" onClick={onDemo}>
-          Try sample manuscript
-        </button>
+        <div className="searchCardActions">
+          <button type="button" className="secondaryButton sampleButton" onClick={onDemo}>
+            Try sample
+          </button>
+          <button
+            type="button"
+            className="secondaryButton sampleButton"
+            onClick={() => document.getElementById("journal-filters")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          >
+            Filters
+          </button>
+          <div className="scanControl" aria-live="polite">
+            <div>
+              <b>{busy ? "Scanning evidence..." : canSubmit ? "Ready to hunt" : "Add manuscript signal"}</b>
+              <small>
+                {readiness}% ready · {publisherSummary} · {policy}
+              </small>
+            </div>
+            <button type="submit" className="primary scanButton" disabled={!canSubmit}>
+              {busy ? "Scanning..." : "Start scan"}
+            </button>
+          </div>
+        </div>
       </div>
+      {error && <p className="error scanError">{error}</p>}
       <div className="manuscriptModeToggle" aria-label="Manuscript input mode">
         {inputModes.map((option) => (
           <button
@@ -1217,7 +1319,7 @@ function ManuscriptCard({
           <label>
             Abstract
             <textarea
-              rows={6}
+              rows={5}
               value={abstract}
               onChange={(e) => setAbstract(e.target.value)}
               placeholder="Paste the abstract or a structured summary"

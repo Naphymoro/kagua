@@ -249,7 +249,11 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
 /* ---------------------------------------------------------------------- */
 /* Workspace: form + results                                              */
 /* ---------------------------------------------------------------------- */
-.workspace, .hunterWorkspace { display: grid; grid-template-columns: minmax(360px, 400px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.workspace { display: grid; grid-template-columns: minmax(360px, 400px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.hunterShell .productHero { padding: 18px 2px 14px; margin-bottom: 14px; gap: 20px; align-items: center; }
+.hunterShell .productHero h1 { max-width: 620px; font-size: 40px; letter-spacing: 0; }
+.hunterWorkspace { display: grid; grid-template-columns: 1fr; gap: 14px; align-items: start; }
+.searchForm { display: grid; gap: 12px; min-width: 0; }
 
 .inputCard, .workflowCard {
   padding: 20px; position: sticky; top: 84px;
@@ -277,6 +281,58 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
   box-shadow: 0 0 0 3px var(--soft);
 }
 .stepPill.current i { background: var(--accent); color: var(--paper); }
+
+.filterDeck { padding: 14px; display: grid; gap: 12px; }
+.filterDeckHeader {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center;
+}
+.filterDeckHeader h2 { margin: 2px 0 0; font-size: 18px; font-weight: 650; }
+.filterActions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.filterActions .textButton { width: auto; min-width: 108px; }
+.activeFilterBar {
+  display: flex; flex-wrap: wrap; gap: 7px; align-items: center;
+  padding: 9px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2);
+}
+.activeFilterLabel {
+  margin-right: 2px; color: var(--muted); font-size: 10px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase;
+}
+.activeFilter {
+  min-height: 30px; display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: var(--radius-full); background: var(--surface); color: var(--ink);
+  padding: 4px 8px; font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap;
+}
+.activeFilter b { color: var(--accent); font-size: 9px; text-transform: uppercase; }
+.activeFilter.removable { cursor: pointer; }
+.activeFilter.removable:hover { background: var(--soft); }
+.activeFilter i {
+  width: 17px; height: 17px; display: grid; place-items: center; border-radius: 999px;
+  background: var(--surface-2); color: var(--muted); font-style: normal; font-size: 10px; font-weight: 750;
+}
+.mutedFilter { color: var(--muted); border-color: var(--line); }
+.filterPanels { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; align-items: start; }
+.filterPanel {
+  min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface); overflow: hidden;
+}
+.filterPanel[open] {
+  grid-column: span 2; border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  background: color-mix(in srgb, var(--soft) 32%, var(--surface));
+}
+.filterPanel summary {
+  min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 11px 12px; cursor: pointer; list-style: none;
+}
+.filterPanel summary::-webkit-details-marker { display: none; }
+.filterPanel summary span { min-width: 0; display: block; }
+.filterPanel summary b, .filterPanel summary small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filterPanel summary b { font-size: 13px; font-weight: 650; }
+.filterPanel summary small { margin-top: 3px; color: var(--muted); font-size: 11px; font-weight: 500; }
+.filterPanel summary i {
+  flex: 0 0 auto; color: var(--accent); font-size: 10px; font-style: normal; font-weight: 700; text-transform: uppercase;
+}
+.filterPanelBody { padding: 0 12px 12px; border-top: 1px solid var(--line); }
+.filterPanelBody label:first-child { margin-top: 12px; }
 
 .scanBar {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center;
@@ -474,8 +530,23 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
 .manuscriptCard { padding: 20px; }
 .manuscriptCard .cardHead { margin-bottom: 4px; }
 .manuscriptCard .sampleButton { margin: 0; }
+.searchCardHeader {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center;
+  margin-bottom: 4px;
+}
+.searchCardHeader h2 { margin: 2px 0 0; font-size: 21px; font-weight: 650; }
+.searchCardActions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+.scanControl {
+  min-width: 390px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  padding: 9px; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: var(--radius-sm); background: color-mix(in srgb, var(--soft) 55%, var(--surface));
+}
+.scanControl b, .scanControl small { display: block; }
+.scanControl b { font-size: 13px; font-weight: 650; }
+.scanControl small { margin-top: 2px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+.scanControl .scanButton { min-width: 116px; min-height: 38px; padding: 9px 13px; }
 .manuscriptHint { margin: 10px 0 0; }
-.manuscriptCard textarea { min-height: 118px; }
+.manuscriptCard textarea { min-height: 96px; }
 .manuscriptDrop {
   position: relative; min-height: 140px; margin-top: 12px; padding: 18px;
   display: grid; place-items: center; gap: 5px; text-align: center; overflow: hidden;
@@ -836,6 +907,11 @@ tbody tr:hover { background: var(--soft); }
   .heroDeck { max-width: 760px; }
   .workspace, .hunterWorkspace { grid-template-columns: 1fr; }
   .inputCard, .workflowCard { position: relative; top: auto; max-height: none; }
+  .searchCardHeader { grid-template-columns: 1fr; }
+  .searchCardActions { justify-content: stretch; }
+  .scanControl { min-width: 0; flex: 1; }
+  .filterPanels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .filterPanel[open] { grid-column: span 2; }
   .launchPanel, .empty { grid-template-columns: 1fr; padding: 28px; }
   .readinessPanel { grid-template-columns: 220px 1fr; align-items: center; }
   .registryGrid { grid-template-columns: 1fr; }
@@ -866,8 +942,15 @@ tbody tr:hover { background: var(--soft); }
 
 @media (max-width: 700px) {
   .shell { padding: 0 14px 40px; }
+  .hunterShell .productHero h1 { font-size: 34px; }
   .grid2, .voteGrid, .manualGrid { grid-template-columns: 1fr; }
-  .manuscriptCard .cardHead { flex-wrap: wrap; }
+  .searchCardActions, .scanControl, .filterDeckHeader, .filterActions { display: grid; grid-template-columns: 1fr; }
+  .filterActions .textButton, .scanControl .scanButton { width: 100%; }
+  .filterPanels { grid-template-columns: 1fr; }
+  .filterPanel[open] { grid-column: auto; }
+  .activeFilterBar { align-items: stretch; }
+  .activeFilterLabel { width: 100%; }
+  .activeFilter { white-space: normal; justify-content: space-between; }
   .manuscriptModeToggle, .ocrStatus { grid-template-columns: 1fr; }
   .segmented.four { grid-template-columns: 1fr 1fr; }
   .journal { padding: 15px; }
