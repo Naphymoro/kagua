@@ -400,6 +400,40 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
 .manuscriptCard .sampleButton { margin: 0; }
 .manuscriptHint { margin: 10px 0 0; }
 .manuscriptCard textarea { min-height: 118px; }
+.manuscriptDrop {
+  position: relative; min-height: 140px; margin-top: 12px; padding: 18px;
+  display: grid; place-items: center; gap: 5px; text-align: center; overflow: hidden;
+  border: 1px dashed color-mix(in srgb, var(--accent) 46%, var(--line));
+  border-radius: var(--radius-sm); background: linear-gradient(135deg, var(--soft), var(--surface));
+  color: var(--ink); cursor: pointer; transition: border-color .15s, background .15s, transform .15s;
+}
+.manuscriptDrop:hover { border-color: var(--accent); background: color-mix(in srgb, var(--soft) 72%, var(--surface)); transform: translateY(-1px); }
+.manuscriptDrop.isReading { opacity: .72; cursor: progress; transform: none; }
+.manuscriptDrop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.manuscriptDrop.isReading input { cursor: progress; }
+.manuscriptDrop span {
+  width: 38px; height: 38px; display: grid; place-items: center; border-radius: var(--radius-sm);
+  background: var(--ink); color: var(--paper); font-size: 24px; line-height: 1; font-weight: 500;
+}
+.manuscriptDrop b { display: block; font-size: 15px; font-weight: 700; }
+.manuscriptDrop small { color: var(--muted); font-size: 11px; font-weight: 600; }
+.ocrStatus {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); background: var(--surface-2);
+}
+.ocrStatus.ready { border-color: color-mix(in srgb, var(--good) 38%, var(--line)); background: var(--good-soft); }
+.ocrStatus.error { border-color: color-mix(in srgb, var(--danger) 38%, var(--line)); background: var(--danger-soft); }
+.ocrStatus b, .ocrStatus span, .ocrStatus small { display: block; min-width: 0; }
+.ocrStatus b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.ocrStatus span { margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+.ocrStatus small { color: var(--muted); font-size: 10px; font-weight: 700; white-space: nowrap; }
+.ocrWarnings { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.ocrWarnings li {
+  padding: 8px 10px; border-left: 3px solid var(--warn); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--warn-soft); color: var(--ink-soft); font-size: 11px; line-height: 1.45;
+}
+.extractedPreview textarea { min-height: 190px; }
 
 .runSnapshot { padding: 20px; display: grid; gap: 15px; }
 .snapshotLead h2 { font-size: 28px; }
@@ -758,6 +792,7 @@ tbody tr:hover { background: var(--soft); }
   .shell { padding: 0 14px 40px; }
   .grid2, .voteGrid, .manualGrid { grid-template-columns: 1fr; }
   .manuscriptCard .cardHead { flex-wrap: wrap; }
+  .manuscriptModeToggle, .ocrStatus { grid-template-columns: 1fr; }
   .segmented.four { grid-template-columns: 1fr 1fr; }
   .journal { padding: 15px; }
   .hero, .productHero { padding-top: 30px; }

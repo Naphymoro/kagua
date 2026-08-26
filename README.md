@@ -4,7 +4,7 @@ Evidence-grounded journal intelligence for researchers.
 
 ## Kagua v0.3
 
-Kagua takes a manuscript title + abstract, discovers candidate journals from live scholarly infrastructure, applies an eligibility authority, calculates an explainable Journal Trilemma Score (KTS), adds publication-pathway evidence into KPOS, and returns five journals at a time until researcher and supervisor reach consensus.
+Kagua takes a manuscript upload, extracted manuscript text, or a title + abstract, discovers candidate journals from live scholarly infrastructure, applies an eligibility authority, calculates an explainable Journal Trilemma Score (KTS), adds publication-pathway evidence into KPOS, and returns five journals at a time until researcher and supervisor reach consensus.
 
 ### Eligibility authority
 
@@ -18,6 +18,17 @@ Researchers can upload a university/institution journal list (XLSX/XLS/CSV/TSV/t
 - Open search
 
 Uploaded lists are matched ISSN-first, with normalized title equality as a secondary fallback. The uploaded list is sent with the analysis request and is not treated as a new global authority.
+
+### Manuscript upload OCR
+
+The Journal Hunter page is upload-first for full manuscripts. Researchers can upload PDF, DOCX, TXT/MD, or image scans, review the extracted text, and then run the same evidence pipeline. Manual paste remains available as a fallback for clean text exports.
+
+TXT/MD files are extracted directly in Kagua. PDF, DOCX and image files are routed to the configured OCR adapter through `OCR_ENDPOINT_URL`. The intended production adapter can wrap Baidu Unlimited-OCR from GitHub or Hugging Face:
+
+- https://github.com/baidu/Unlimited-OCR
+- https://huggingface.co/baidu/Unlimited-OCR
+
+Kagua posts multipart form data with `file`, `provider`, `schemaVersion`, and `prompt`. The adapter should return JSON with at least `text`, and may also return `title`, `abstract`, `keywords`, `confidence`, `pageCount`, and `warnings`.
 
 ### Journal Trilemma
 
@@ -51,6 +62,8 @@ The official hosted DeepSeek API is usage-priced; Kagua does **not** label it fr
 ### Environment
 
 See `.env.example`. Godmode checks configured server providers in DeepSeek-first order. BYOK provider configuration can also be sent per analysis request. Never commit API keys.
+
+For manuscript OCR, set `OCR_ENDPOINT_URL` to the deployed Unlimited-OCR adapter or Hugging Face endpoint. `OCR_API_KEY` is optional when the endpoint is private or authenticated.
 
 ### Manual
 
@@ -95,6 +108,12 @@ Required Cloudflare runtime secrets:
 - `AUTH_URL` set to the deployed Cloudflare URL
 - `AUTH_GOOGLE_ID`
 - `AUTH_GOOGLE_SECRET`
+
+Optional OCR runtime secrets:
+
+- `OCR_PROVIDER`
+- `OCR_ENDPOINT_URL`
+- `OCR_API_KEY`
 
 Add the Cloudflare Auth.js callback URL to the Google OAuth client:
 

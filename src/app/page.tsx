@@ -13,6 +13,7 @@ import type {
   JournalScore,
   LlmMode,
   LlmProviderId,
+  ManuscriptExtraction,
   MetricPreferences,
   Quartile,
   ScoreContribution,
@@ -24,11 +25,24 @@ type Theme = "light" | "dark";
 type Vote = "undecided" | "approve" | "reject";
 type Decision = { researcher: Vote; supervisor: Vote; note: string };
 type SortKey = "kpos" | "trilemma" | "fit" | "quality" | "affordability" | "speed" | "impactFactor";
+type InputMode = "structured" | "upload" | "paste";
+type UploadStatus = "idle" | "reading" | "ready" | "error";
+type ManuscriptUploadState = {
+  status: UploadStatus;
+  fileName: string;
+  fileSize: number;
+  provider: string;
+  message: string;
+  confidence?: number;
+  warnings: string[];
+};
 type Draft = {
   title: string;
   abstract: string;
-  inputMode: "structured" | "full";
+  inputMode: InputMode | "full";
   manuscript: string;
+  manuscriptFileName?: string;
+  manuscriptProvider?: string;
   keywords: string;
   budget: number;
   days: number;
@@ -46,6 +60,15 @@ type Draft = {
 };
 
 const DRAFT_KEY = "kagua.hunter.draft.v2";
+const idleManuscriptUpload = (): ManuscriptUploadState => ({
+  status: "idle",
+  fileName: "",
+  fileSize: 0,
+  provider: "",
+  message: "",
+  warnings: [],
+});
+const manuscriptAccept = ".pdf,.docx,.txt,.md,.markdown,.tex,.png,.jpg,.jpeg,.tif,.tiff,.webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,image/*";
 
 const providers = [
   {
@@ -118,6 +141,18 @@ function readDraft() {
   }
 }
 
+function normalizeInputMode(value: Partial<Draft>["inputMode"]): InputMode {
+  if (value === "full") return "upload";
+  return value === "upload" || value === "paste" || value === "structured" ? value : "structured";
+}
+
+function formatBytes(bytes: number) {
+  if (!bytes) return "0 KB";
+  const units = ["B", "KB", "MB", "GB"];
+  const power = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** power).toFixed(power ? 1 : 0)} ${units[power]}`;
+}
+
 export default function Home() {
   // Every field below starts at a fixed default — the same one the server
   // renders — rather than reading the saved draft during the initial
@@ -132,13 +167,11 @@ export default function Home() {
   const [theme, setTheme] = useState<Theme>("light");
   const [title, setTitle] = useState("");
   const [abstract, setAbstract] = useState("");
-  // Two mutually exclusive ways to feed Kagua a manuscript: fill in the
-  // structured title+abstract fields, or paste the paper's full text into
-  // one box. Both feed the same anchors()/discovery-query pipeline
-  // server-side (see scoring.ts, evidence.ts) — this only controls which
-  // input the researcher sees and edits.
-  const [inputMode, setInputMode] = useState<"structured" | "full">("structured");
+  // These input modes only control the researcher's editing surface; all
+  // routes feed the same title/abstract/manuscript anchors server-side.
+  const [inputMode, setInputMode] = useState<InputMode>("structured");
   const [manuscript, setManuscript] = useState("");
+  const [manuscriptUpload, setManuscriptUpload] = useState<ManuscriptUploadState>(idleManuscriptUpload);
   const [keywords, setKeywords] = useState("");
   const [budget, setBudget] = useState(2500);
   const [days, setDays] = useState(45);
@@ -198,8 +231,21 @@ export default function Home() {
     const draft = readDraft();
     if (draft.title) setTitle(draft.title);
     if (draft.abstract) setAbstract(draft.abstract);
-    if (draft.inputMode) setInputMode(draft.inputMode);
-    if (draft.manuscript) setManuscript(draft.manuscript);
+    const restoredMode = normalizeInputMode(draft.inputMode);
+    if (draft.inputMode) setInputMode(restoredMode);
+    if (draft.manuscript) {
+      setManuscript(draft.manuscript);
+      if (restoredMode === "upload") {
+        setManuscriptUpload({
+          status: "ready",
+          fileName: draft.manuscriptFileName || "Saved manuscript extraction",
+          fileSize: draft.manuscript.length,
+          provider: draft.manuscriptProvider || "saved draft",
+          message: "Extracted text restored from this browser.",
+          warnings: [],
+        });
+      }
+    }
     if (draft.keywords) setKeywords(draft.keywords);
     if (draft.budget != null) setBudget(draft.budget);
     if (draft.days != null) setDays(draft.days);
@@ -230,6 +276,8 @@ export default function Home() {
       abstract,
       inputMode,
       manuscript,
+      manuscriptFileName: manuscriptUpload.fileName,
+      manuscriptProvider: manuscriptUpload.provider,
       keywords,
       budget,
       days,
@@ -252,6 +300,8 @@ export default function Home() {
     abstract,
     inputMode,
     manuscript,
+    manuscriptUpload.fileName,
+    manuscriptUpload.provider,
     baseUrl,
     budget,
     days,
@@ -276,17 +326,18 @@ export default function Home() {
   const manuscriptWords = useMemo(() => manuscript.trim().split(/\s+/).filter(Boolean).length, [manuscript]);
   const readiness = useMemo(() => {
     let score = 0;
-    if (inputMode === "full") {
-      if (manuscript.trim().length > 40) score += 32;
-      if (manuscriptWords >= 150) score += 38;
-    } else {
+    if (inputMode === "structured") {
       if (title.trim().length > 12) score += 32;
       if (abstractWords >= 80) score += 38;
+    } else {
+      if (manuscript.trim().length > 40) score += 32;
+      if (manuscriptWords >= 150) score += 38;
+      if (inputMode === "upload" && manuscriptUpload.status === "ready") score += 8;
     }
     if (keywordList.length >= 3) score += 16;
     if (eligibilityPolicy === "dhet" || customList || eligibilityPolicy === "all") score += 14;
     return Math.min(100, score);
-  }, [abstractWords, customList, eligibilityPolicy, inputMode, keywordList.length, manuscript, manuscriptWords, title]);
+  }, [abstractWords, customList, eligibilityPolicy, inputMode, keywordList.length, manuscript, manuscriptUpload.status, manuscriptWords, title]);
   const table = useMemo(
     () => [...(data?.rankingExplorer || [])].sort((a, b) => Number(b[sort] || 0) - Number(a[sort] || 0)),
     [data, sort],
@@ -326,6 +377,7 @@ export default function Home() {
     setTitle("");
     setAbstract("");
     setManuscript("");
+    setManuscriptUpload(idleManuscriptUpload());
     setInputMode("structured");
     setKeywords("");
     setBudget(2500);
@@ -348,6 +400,7 @@ export default function Home() {
 
   function fillDemo() {
     setInputMode("structured");
+    setManuscriptUpload(idleManuscriptUpload());
     setTitle("Single-atom catalysts on ceria for low-temperature ammonia decomposition");
     setAbstract(
       "This manuscript reports density functional theory and microkinetic analysis of transition-metal single atom catalysts anchored on defective ceria surfaces for low-temperature ammonia decomposition. The study compares nitrogen vacancy formation, hydrogen spillover, N-H bond activation barriers, and catalyst stability across multiple dopants. The work combines mechanistic modelling with materials screening to identify affordable catalyst motifs for green hydrogen carrier systems.",
@@ -371,6 +424,46 @@ export default function Home() {
       setError(e instanceof Error ? e.message : "Could not parse the journal list.");
     } finally {
       setListBusy(false);
+    }
+  }
+
+  async function uploadManuscriptFile(file: File | null) {
+    if (!file) return;
+    setInputMode("upload");
+    setError("");
+    setManuscriptUpload({
+      status: "reading",
+      fileName: file.name,
+      fileSize: file.size,
+      provider: "OCR",
+      message: "Reading manuscript file...",
+      warnings: [],
+    });
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch("/api/manuscript/extract", { method: "POST", body: form });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Could not extract manuscript text.");
+      const extraction = body as ManuscriptExtraction;
+      const extractedWords = extraction.text.trim().split(/\s+/).filter(Boolean).length;
+      setManuscript(extraction.text);
+      if (!title.trim() && extraction.title) setTitle(extraction.title);
+      if (!abstract.trim() && extraction.abstract) setAbstract(extraction.abstract);
+      if (!keywords.trim() && extraction.keywords?.length) setKeywords(extraction.keywords.join(", "));
+      setManuscriptUpload({
+        status: "ready",
+        fileName: extraction.fileName,
+        fileSize: extraction.fileSize,
+        provider: extraction.provider,
+        confidence: extraction.confidence,
+        message: `${extractedWords.toLocaleString()} words extracted`,
+        warnings: extraction.warnings || [],
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Could not extract manuscript text.";
+      setManuscriptUpload((current) => ({ ...current, status: "error", message }));
+      setError(message);
     }
   }
 
@@ -482,10 +575,10 @@ export default function Home() {
     setSelectedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id].slice(-4)));
   }
 
-  // A title alone, an abstract alone, or a pasted full manuscript alone is
-  // enough to search on — whichever the researcher actually has.
+  // A title alone, an abstract alone, or extracted/uploaded manuscript text is
+  // enough to search on, whichever the researcher actually has.
   const canSubmit = Boolean(
-    (inputMode === "full" ? manuscript.trim() : title.trim() || abstract.trim()) && !busy,
+    (inputMode === "structured" ? title.trim() || abstract.trim() : manuscript.trim()) && !busy,
   );
   const stepMeta = [
     { label: "Authority", done: eligibilityPolicy === "dhet" || eligibilityPolicy === "all" || Boolean(customList) },
@@ -775,6 +868,8 @@ export default function Home() {
             setAbstract={setAbstract}
             manuscript={manuscript}
             setManuscript={setManuscript}
+            uploadState={manuscriptUpload}
+            onUpload={uploadManuscriptFile}
             keywords={keywords}
             setKeywords={setKeywords}
             abstractWords={abstractWords}
@@ -966,6 +1061,8 @@ function ManuscriptCard({
   setAbstract,
   manuscript,
   setManuscript,
+  uploadState,
+  onUpload,
   keywords,
   setKeywords,
   abstractWords,
@@ -973,14 +1070,16 @@ function ManuscriptCard({
   keywordCount,
   onDemo,
 }: {
-  inputMode: "structured" | "full";
-  setInputMode: (v: "structured" | "full") => void;
+  inputMode: InputMode;
+  setInputMode: (v: InputMode) => void;
   title: string;
   setTitle: (v: string) => void;
   abstract: string;
   setAbstract: (v: string) => void;
   manuscript: string;
   setManuscript: (v: string) => void;
+  uploadState: ManuscriptUploadState;
+  onUpload: (file: File | null) => void;
   keywords: string;
   setKeywords: (v: string) => void;
   abstractWords: number;
@@ -988,6 +1087,7 @@ function ManuscriptCard({
   keywordCount: number;
   onDemo: () => void;
 }) {
+  const activeWords = inputMode === "structured" ? abstractWords : manuscriptWords;
   return (
     <section className="card manuscriptCard">
       <div className="cardHead">
@@ -999,17 +1099,20 @@ function ManuscriptCard({
           Try sample manuscript
         </button>
       </div>
-      <div className="segmented two manuscriptModeToggle" aria-label="Manuscript input mode">
+      <div className="segmented manuscriptModeToggle" aria-label="Manuscript input mode">
         <button type="button" className={inputMode === "structured" ? "active" : ""} onClick={() => setInputMode("structured")}>
           Title &amp; abstract
         </button>
-        <button type="button" className={inputMode === "full" ? "active" : ""} onClick={() => setInputMode("full")}>
-          Full manuscript
+        <button type="button" className={inputMode === "upload" ? "active" : ""} onClick={() => setInputMode("upload")}>
+          Upload file
+        </button>
+        <button type="button" className={inputMode === "paste" ? "active" : ""} onClick={() => setInputMode("paste")}>
+          Paste text
         </button>
       </div>
       {inputMode === "structured" ? (
         <>
-          <p className="mutedCopy manuscriptHint">A title alone or an abstract alone is enough to search — more of either sharpens the match.</p>
+          <p className="mutedCopy manuscriptHint">A title alone or an abstract alone is enough to search. More of either sharpens the match.</p>
           <label>
             Manuscript title
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Paste the working title" />
@@ -1024,19 +1127,74 @@ function ManuscriptCard({
             />
           </label>
         </>
+      ) : inputMode === "upload" ? (
+        <>
+          <p className="mutedCopy manuscriptHint">
+            Upload the manuscript and review the extracted text before Kagua searches for journals.
+          </p>
+          <label
+            className={`manuscriptDrop ${uploadState.status === "reading" ? "isReading" : ""}`}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              onUpload(e.dataTransfer.files?.[0] || null);
+            }}
+          >
+            <input
+              type="file"
+              accept={manuscriptAccept}
+              disabled={uploadState.status === "reading"}
+              onChange={(e) => {
+                onUpload(e.target.files?.[0] || null);
+                e.currentTarget.value = "";
+              }}
+            />
+            <span>+</span>
+            <b>{uploadState.status === "reading" ? "Extracting manuscript..." : "Upload manuscript"}</b>
+            <small>PDF, DOCX, TXT, PNG, JPG or TIFF</small>
+          </label>
+          {uploadState.status !== "idle" && (
+            <div className={`ocrStatus ${uploadState.status}`}>
+              <div>
+                <b>{uploadState.fileName || "Manuscript"}</b>
+                <span>{uploadState.message || "Waiting for extraction"}</span>
+              </div>
+              <small>
+                {formatBytes(uploadState.fileSize)}
+                {uploadState.provider ? ` · ${uploadState.provider}` : ""}
+                {uploadState.confidence != null ? ` · ${Math.round(uploadState.confidence * 100)}%` : ""}
+              </small>
+            </div>
+          )}
+          {uploadState.warnings.length > 0 && (
+            <ul className="ocrWarnings">
+              {uploadState.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          )}
+          <label className="extractedPreview">
+            Extracted manuscript preview
+            <textarea
+              rows={9}
+              value={manuscript}
+              onChange={(e) => setManuscript(e.target.value)}
+              placeholder="Extracted manuscript text will appear here"
+            />
+          </label>
+        </>
       ) : (
         <>
           <p className="mutedCopy manuscriptHint">
-            Paste the paper itself — Kagua reads it the same way it would read a title and abstract, just with more to
-            work with.
+            Paste text only when you already have a clean manuscript export or the OCR service is unavailable.
           </p>
           <label>
-            Full manuscript
+            Manuscript text
             <textarea
               rows={14}
               value={manuscript}
               onChange={(e) => setManuscript(e.target.value)}
-              placeholder="Paste the full manuscript text (intro, methods, results — as much as you have)"
+              placeholder="Paste clean manuscript text"
             />
           </label>
         </>
@@ -1050,9 +1208,9 @@ function ManuscriptCard({
         />
       </label>
       <div className="signalStrip">
-        <SmallMetric label="Words" value={(inputMode === "full" ? manuscriptWords : abstractWords).toLocaleString()} />
+        <SmallMetric label="Words" value={activeWords.toLocaleString()} />
         <SmallMetric label="Keywords" value={keywordCount.toString()} />
-        <SmallMetric label="Scope floor" value="60/100" />
+        <SmallMetric label="Source" value={inputMode === "structured" ? "Abstract" : inputMode === "upload" ? "Upload" : "Paste"} />
       </div>
     </section>
   );
