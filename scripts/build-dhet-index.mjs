@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import XLSX from 'xlsx';
@@ -6,6 +6,7 @@ import XLSX from 'xlsx';
 const SOURCE_URL = process.env.DHET_SOURCE_URL || 'https://www.dhet.gov.za/Policy%20and%20Development%20Support/2025-2026%20DHET%20List%20of%20%20Accerdited%20Journals.xls';
 const OUTPUT = join(process.cwd(), 'src/lib/kagua/data/dhet-2025-2026.json.gz');
 const ISSN_RE = /\b\d{4}-?\d{3}[\dXx]\b/g;
+const FETCH_TIMEOUT_MS = Number(process.env.DHET_FETCH_TIMEOUT_MS || 45000);
 
 const norm = (v) => {
   const r = String(v || '').toUpperCase().replace(/[^0-9X]/g, '');
@@ -78,10 +79,25 @@ function qx(v) {
   return m ? `Q${m[1]}` : null;
 }
 
-const response = await fetch(SOURCE_URL, { headers: { 'User-Agent': 'Kagua/1.0 DHET index builder' } });
-if (!response.ok) throw new Error(`DHET workbook fetch failed: ${response.status}`);
+let workbookBuffer;
+const controller = new AbortController();
+const timeout = setTimeout(() => controller.abort(), Number.isFinite(FETCH_TIMEOUT_MS) ? FETCH_TIMEOUT_MS : 45000);
+try {
+  const response = await fetch(SOURCE_URL, { headers: { 'User-Agent': 'Kagua/1.0 DHET index builder' }, signal: controller.signal });
+  if (!response.ok) throw new Error(`DHET workbook fetch failed: ${response.status}`);
+  workbookBuffer = Buffer.from(await response.arrayBuffer());
+} catch (error) {
+  if (existsSync(OUTPUT)) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(`DHET refresh failed (${reason}); using committed cached index at ${OUTPUT}.`);
+    process.exit(0);
+  }
+  throw error;
+} finally {
+  clearTimeout(timeout);
+}
 
-const workbook = XLSX.read(Buffer.from(await response.arrayBuffer()), { type: 'buffer' });
+const workbook = XLSX.read(workbookBuffer, { type: 'buffer' });
 const recordsByIssn = {};
 let matchedRows = 0;
 let metricRows = 0;
