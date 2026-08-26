@@ -1,3 +1,4 @@
+import { inflateRawSync } from "node:zlib";
 import type { ManuscriptExtraction } from "./types";
 
 const DEFAULT_UPLOAD_MB = 25;
@@ -56,6 +57,18 @@ export async function extractManuscriptFromFile(file: File): Promise<ManuscriptE
       provider: "plain-text upload",
       text: await file.text(),
       confidence: 0.92,
+      warnings: [],
+    });
+  }
+
+  if (extension === ".docx") {
+    return buildExtraction({
+      file,
+      fileName,
+      fileType,
+      provider: "docx text extraction",
+      text: await extractDocxText(file),
+      confidence: 0.86,
       warnings: [],
     });
   }
@@ -174,6 +187,96 @@ function buildExtraction(input: {
     warnings,
     sections: profile.sections,
   };
+}
+
+async function extractDocxText(file: File) {
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const documentXml = readZipTextEntry(buffer, "word/document.xml");
+  if (!documentXml) {
+    throw new ManuscriptExtractionError("Could not find readable manuscript text inside that DOCX file.", 422, "DOCX_TEXT_NOT_FOUND");
+  }
+  const text = textFromWordXml(documentXml);
+  if (!text.trim()) {
+    throw new ManuscriptExtractionError("That DOCX file did not contain readable manuscript text.", 422, "DOCX_TEXT_EMPTY");
+  }
+  return text;
+}
+
+function readZipTextEntry(buffer: Buffer, targetName: string) {
+  const eocdOffset = findEndOfCentralDirectory(buffer);
+  if (eocdOffset < 0) return "";
+  const entryCount = buffer.readUInt16LE(eocdOffset + 10);
+  let offset = buffer.readUInt32LE(eocdOffset + 16);
+
+  for (let i = 0; i < entryCount && offset + 46 <= buffer.length; i += 1) {
+    if (buffer.readUInt32LE(offset) !== 0x02014b50) break;
+    const method = buffer.readUInt16LE(offset + 10);
+    const compressedSize = buffer.readUInt32LE(offset + 20);
+    const nameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const commentLength = buffer.readUInt16LE(offset + 32);
+    const localHeaderOffset = buffer.readUInt32LE(offset + 42);
+    const name = buffer.subarray(offset + 46, offset + 46 + nameLength).toString("utf8");
+    if (name.toLowerCase() === targetName.toLowerCase()) {
+      const data = readZipEntryData(buffer, localHeaderOffset, compressedSize, method);
+      return data.toString("utf8");
+    }
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+
+  return "";
+}
+
+function readZipEntryData(buffer: Buffer, localHeaderOffset: number, compressedSize: number, method: number) {
+  if (localHeaderOffset < 0 || localHeaderOffset + 30 > buffer.length || buffer.readUInt32LE(localHeaderOffset) !== 0x04034b50) {
+    throw new ManuscriptExtractionError("The DOCX archive structure could not be read.", 422, "DOCX_ARCHIVE_INVALID");
+  }
+  const nameLength = buffer.readUInt16LE(localHeaderOffset + 26);
+  const extraLength = buffer.readUInt16LE(localHeaderOffset + 28);
+  const dataStart = localHeaderOffset + 30 + nameLength + extraLength;
+  const dataEnd = dataStart + compressedSize;
+  if (dataEnd > buffer.length) {
+    throw new ManuscriptExtractionError("The DOCX document body is incomplete.", 422, "DOCX_ARCHIVE_TRUNCATED");
+  }
+  const compressed = buffer.subarray(dataStart, dataEnd);
+  if (method === 0) return compressed;
+  if (method === 8) return inflateRawSync(compressed);
+  throw new ManuscriptExtractionError("The DOCX file uses an unsupported compression method.", 422, "DOCX_UNSUPPORTED_COMPRESSION");
+}
+
+function findEndOfCentralDirectory(buffer: Buffer) {
+  for (let offset = buffer.length - 22; offset >= 0; offset -= 1) {
+    if (buffer.readUInt32LE(offset) === 0x06054b50) return offset;
+  }
+  return -1;
+}
+
+function textFromWordXml(xml: string) {
+  return xml
+    .replace(/<w:tab\s*\/?\s*>/gi, "\t")
+    .replace(/<w:br\s*\/?\s*>/gi, "\n")
+    .split(/<\/w:p>/i)
+    .map((paragraph) =>
+      [...paragraph.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/gi)]
+        .map((match) => decodeXml(match[1]))
+        .join(""),
+    )
+    .map((paragraph) => paragraph.replace(/[ \t]+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function decodeXml(value: string) {
+  return value.replace(/&(#x?[0-9a-f]+|amp|lt|gt|quot|apos);/gi, (_, entity: string) => {
+    const lower = entity.toLowerCase();
+    if (lower === "amp") return "&";
+    if (lower === "lt") return "<";
+    if (lower === "gt") return ">";
+    if (lower === "quot") return "\"";
+    if (lower === "apos") return "'";
+    const code = lower.startsWith("#x") ? Number.parseInt(lower.slice(2), 16) : Number.parseInt(lower.slice(1), 10);
+    return Number.isFinite(code) ? String.fromCodePoint(code) : "";
+  });
 }
 
 function profileText(text: string) {

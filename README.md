@@ -23,7 +23,7 @@ Uploaded lists are matched ISSN-first, with normalized title equality as a secon
 
 The Journal Hunter page is upload-first for full manuscripts. Researchers can upload PDF, DOCX, TXT/MD, or image scans, review the extracted text, and then run the same evidence pipeline. Manual paste remains available as a fallback for clean text exports.
 
-TXT/MD files are extracted directly in Kagua. PDF, DOCX and image files are routed to the configured OCR adapter through `OCR_ENDPOINT_URL`. The intended production adapter can wrap Baidu Unlimited-OCR from GitHub or Hugging Face:
+TXT/MD and text-based DOCX files are extracted directly in Kagua. PDF and image scans are routed to the configured OCR adapter through `OCR_ENDPOINT_URL`. The intended production adapter can wrap Baidu Unlimited-OCR from GitHub or Hugging Face:
 
 - https://github.com/baidu/Unlimited-OCR
 - https://huggingface.co/baidu/Unlimited-OCR
