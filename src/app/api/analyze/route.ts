@@ -52,9 +52,10 @@ function publisherText(b: AnalysisRequest) {
 export async function POST(req: NextRequest) {
   try {
     const raw = (await req.json()) as AnalysisRequest;
-    if (!raw.title?.trim() && !raw.abstract?.trim() && !raw.manuscript?.trim()) {
+    const keywords = (raw.keywords || []).map((keyword) => keyword.trim()).filter(Boolean);
+    if (!raw.title?.trim() && !raw.abstract?.trim() && !raw.manuscript?.trim() && !keywords.length) {
       return NextResponse.json(
-        { error: "A manuscript title, an abstract, or a full manuscript is required - any one alone is enough to search on." },
+        { error: "A title, abstract, manuscript, or topic/journal search term is required - any one alone is enough to search on." },
         { status: 400 },
       );
     }
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
     // Normalized once, here, rather than guarding every downstream template
     // literal individually: title/abstract/manuscript are each independently
     // optional now, but every call site below assumes strings.
-    const body: AnalysisRequest = { ...raw, title: raw.title || "", abstract: raw.abstract || "", manuscript: raw.manuscript || "" };
+    const body: AnalysisRequest = { ...raw, title: raw.title || "", abstract: raw.abstract || "", manuscript: raw.manuscript || "", keywords };
 
     if (body.title.length > 1000 || body.abstract.length > 30000 || (body.manuscript?.length || 0) > 60000) {
       return NextResponse.json({ error: "Manuscript input is too long." }, { status: 400 });

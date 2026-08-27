@@ -794,10 +794,10 @@ export default function Home() {
     setSelectedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id].slice(-4)));
   }
 
-  // A title alone, an abstract alone, or extracted/uploaded manuscript text is
+  // A title, abstract, search terms, or extracted/uploaded manuscript text is
   // enough to search on, whichever the researcher actually has.
   const canSubmit = Boolean(
-    (inputMode === "structured" ? title.trim() || abstract.trim() : manuscript.trim()) && !busy,
+    (inputMode === "structured" ? title.trim() || abstract.trim() || keywordList.length : manuscript.trim()) && !busy,
   );
   return (
     <main className="shell hunterShell">
@@ -1524,18 +1524,19 @@ function ManuscriptCard({
   error: string;
   children?: React.ReactNode;
 }) {
-  const activeWords = inputMode === "structured" ? abstractWords : manuscriptWords;
+  const titleWords = title.trim().split(/\s+/).filter(Boolean).length;
+  const activeWords = inputMode === "structured" ? titleWords + abstractWords : manuscriptWords;
   const inputModes: Array<{ value: InputMode; label: string; hint: string; icon: string }> = [
-    { value: "structured", label: "Title & abstract", hint: "Fast entry", icon: "T" },
-    { value: "upload", label: "Upload file", hint: "Best for manuscripts", icon: "U" },
-    { value: "paste", label: "Paste text", hint: "Clean text only", icon: "P" },
+    { value: "structured", label: "Match abstract", hint: "Title, abstract, or topic", icon: "M" },
+    { value: "upload", label: "Upload manuscript", hint: "OCR assisted", icon: "U" },
+    { value: "paste", label: "Paste manuscript", hint: "Clean text", icon: "P" },
   ];
   return (
     <section className="card manuscriptCard">
       <div className="searchCardHeader">
         <div>
           <span className="eyebrow">01 · MANUSCRIPT SIGNAL</span>
-          <h2>What are you submitting?</h2>
+          <h2>Find journals for your research</h2>
         </div>
         <div className="searchCardActions">
           <button type="button" className="secondaryButton sampleButton" onClick={onDemo}>
@@ -1546,13 +1547,13 @@ function ManuscriptCard({
           </button>
           <div className="scanControl" aria-live="polite">
             <div>
-              <b>{busy ? "Scanning evidence..." : canSubmit ? "Ready to hunt" : "Add manuscript signal"}</b>
+              <b>{busy ? "Finding journals..." : canSubmit ? "Ready to find" : "Add a search signal"}</b>
               <small>
-                {readiness}% ready · {publisherSummary} · {policy}
+                {readiness}% match signal · {publisherSummary} · {policy}
               </small>
             </div>
             <button type="submit" className="primary scanButton" disabled={!canSubmit}>
-              {busy ? "Scanning..." : "Start scan"}
+              {busy ? "Finding..." : "Find journals"}
             </button>
           </div>
         </div>
@@ -1578,10 +1579,14 @@ function ManuscriptCard({
       </div>
       {inputMode === "structured" ? (
         <>
-          <p className="mutedCopy manuscriptHint">A title alone or an abstract alone is enough to search. More of either sharpens the match.</p>
+          <p className="mutedCopy manuscriptHint">Start with a title, abstract, journal name, subject area, or aims-and-scope phrase.</p>
           <label>
             Manuscript title
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Paste the working title" />
+            <span className="fieldAssist">
+              <span>{titleWords.toLocaleString()} words</span>
+              <span>Best with 10+ words</span>
+            </span>
           </label>
           <label>
             Abstract
@@ -1591,6 +1596,10 @@ function ManuscriptCard({
               onChange={(e) => setAbstract(e.target.value)}
               placeholder="Paste the abstract or a structured summary"
             />
+            <span className="fieldAssist">
+              <span>{abstractWords.toLocaleString()} words</span>
+              <span>Best with 80+ words</span>
+            </span>
           </label>
         </>
       ) : inputMode === "upload" ? (
@@ -1666,12 +1675,16 @@ function ManuscriptCard({
         </>
       )}
       <label>
-        Keywords
+        Topic, journal, subject, or keywords
         <input
           value={keywords}
           onChange={(e) => setKeywords(e.target.value)}
-          placeholder="ammonia decomposition, ceria, DFT"
+          placeholder="ammonia decomposition; catalysis; energy journals; aims and scope terms"
         />
+        <span className="fieldAssist">
+          <span>{keywordCount.toLocaleString()} terms</span>
+          <span>Can be used alone for discovery</span>
+        </span>
       </label>
       <div className="signalStrip">
         <SmallMetric label="Words" value={activeWords.toLocaleString()} />

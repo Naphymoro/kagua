@@ -642,6 +642,7 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
 .manuscriptCard .cardHead { margin-bottom: 4px; }
 .manuscriptCard .sampleButton { margin: 0; }
 .manuscriptCard .refinementDock { margin-top: 12px; }
+.manuscriptCard label { font-weight: 500; }
 .searchCardHeader {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center;
   margin-bottom: 4px;
@@ -659,6 +660,11 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
 .scanControl .scanButton { min-width: 116px; min-height: 38px; padding: 9px 13px; }
 .manuscriptHint { margin: 10px 0 0; }
 .manuscriptCard textarea { min-height: 96px; }
+.fieldAssist {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px;
+  margin-top: 5px; color: var(--muted); font-size: 11px; font-weight: 500; line-height: 1.35;
+}
+.fieldAssist span:last-child { color: var(--accent); }
 .manuscriptDrop {
   position: relative; min-height: 140px; margin-top: 12px; padding: 18px;
   display: grid; place-items: center; gap: 5px; text-align: center; overflow: hidden;
