@@ -167,6 +167,24 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .checkRow { display: flex; gap: 9px; align-items: flex-start; text-transform: none; line-height: 1.45; }
 .checkRow input { width: auto; margin-top: 3px; accent-color: var(--accent); }
+.switchRow {
+  display: flex; gap: 11px; align-items: center; margin: 0 0 10px;
+  padding: 11px 12px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
+  border-radius: var(--radius-sm); background: var(--soft); text-transform: none;
+}
+.switchRow input {
+  appearance: none; width: 38px; height: 22px; flex: 0 0 38px; margin: 0;
+  border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface);
+  padding: 0; cursor: pointer; transition: background .15s, border-color .15s;
+}
+.switchRow input::before {
+  content: ""; display: block; width: 16px; height: 16px; margin: 2px;
+  border-radius: 999px; background: var(--muted); transition: transform .15s, background .15s;
+}
+.switchRow input:checked { border-color: var(--accent); background: var(--accent); }
+.switchRow input:checked::before { transform: translateX(16px); background: #ffffff; }
+.switchRow b, .switchRow small { display: block; }
+.switchRow small { margin-top: 2px; color: var(--muted); font-size: 11px; font-weight: 500; line-height: 1.35; }
 .divider { border-top: 1px solid var(--line); margin: 20px 0; }
 
 .chip, .label {
@@ -371,6 +389,14 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
 }
 .refineMenu:nth-last-child(-n+2) .refineMenuPanel { left: auto; right: 0; }
 .refineMenuPanel label:first-child, .refineMenuPanel .metricAccordion:first-child { margin-top: 0; }
+.filterPanelFooter {
+  position: sticky; bottom: -14px; display: grid; grid-template-columns: 1fr 1.3fr; gap: 8px;
+  margin: 14px -14px -14px; padding: 10px 14px; border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(12px);
+}
+.filterPanelFooter .secondaryButton, .filterPanelFooter .compactPrimary { width: 100%; min-height: 38px; margin: 0; }
+.compactPrimary { padding: 9px 12px; box-shadow: none; }
 
 .scanBar {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center;
@@ -398,6 +424,20 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
 .sectionTitle h2 { font-size: 16px; font-weight: 700; }
 
 .signalStrip, .snapshotGrid, .readinessGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; margin-top: 10px; }
+
+.criteriaStack { display: grid; gap: 7px; margin: 8px 0 10px; }
+.optionCheck {
+  margin: 0; padding: 10px 11px; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); background: var(--surface);
+}
+.optionCheck input { width: 17px; height: 17px; }
+.optionCheck b, .optionCheck small { display: block; }
+.optionCheck small { margin-top: 3px; color: var(--muted); font-size: 11px; font-weight: 500; line-height: 1.35; }
+.optionCheck:has(input:checked) {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+  background: color-mix(in srgb, var(--soft) 66%, var(--surface));
+}
+.disabledOption { opacity: .65; }
 
 .authorityPanel {
   display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; margin-top: 10px;
@@ -822,6 +862,11 @@ tbody tr:hover { background: var(--soft); }
 .registrySearch { position: relative; }
 .registrySearch span { position: absolute; left: 13px; top: 11px; color: var(--accent); font-size: 16px; }
 .registrySearch input { padding-left: 36px; }
+.registryFeedback { margin: 10px 0 0; }
+.successFeedback {
+  padding: 11px 13px; border-radius: var(--radius-sm);
+  background: var(--good-soft); color: var(--good); font-size: 13px;
+}
 
 .registryActions { display: grid; grid-template-columns: 1.35fr 1.15fr .8fr; gap: 10px; margin: 10px 0; }
 .importCard, .swarmCard, .verifiedToggle { min-height: 72px; padding: 13px 15px; display: flex; align-items: center; gap: 12px; text-align: left; border: 1px solid var(--line); }
@@ -832,7 +877,19 @@ tbody tr:hover { background: var(--soft); }
 .importCard b, .swarmCard b, .verifiedToggle b { display: block; font-size: 12px; font-weight: 650; }
 .importCard small, .swarmCard small, .verifiedToggle small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.35; }
 .swarmCard { cursor: pointer; background: var(--surface); }
+.swarmCard:disabled { opacity: .65; cursor: progress; }
 .verifiedToggle input { width: 17px; height: 17px; accent-color: var(--accent); }
+.toggleCard input {
+  appearance: none; width: 38px; height: 22px; flex: 0 0 38px; margin: 0;
+  border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface);
+  padding: 0; cursor: pointer; transition: background .15s, border-color .15s;
+}
+.toggleCard input::before {
+  content: ""; display: block; width: 16px; height: 16px; margin: 2px;
+  border-radius: 999px; background: var(--muted); transition: transform .15s, background .15s;
+}
+.toggleCard input:checked { border-color: var(--accent); background: var(--accent); }
+.toggleCard input:checked::before { transform: translateX(16px); background: #ffffff; }
 
 .importStatus { margin-bottom: 10px; padding: 10px 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
 .liveDot, .liveBadge i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--soft); }

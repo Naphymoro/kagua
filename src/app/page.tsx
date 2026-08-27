@@ -60,8 +60,31 @@ type Draft = {
   baseUrl: string;
   speedLocked: boolean;
 };
+type FilterSnapshot = {
+  budget: number;
+  days: number;
+  speedLocked: boolean;
+  metrics: MetricPreferences;
+  quartilePreset: string;
+  publisherFilters: string[];
+  jifMin: string;
+  jifMax: string;
+  eligibilityPolicy: EligibilityPolicy;
+  customList: CustomJournalList | null;
+  mode: LlmMode;
+  provider: LlmProviderId;
+  model: string;
+  baseUrl: string;
+  keyOpen: boolean;
+};
 
 const DRAFT_KEY = "kagua.hunter.draft.v2";
+const closedFilters = (): Record<FilterPanelKey, boolean> => ({
+  authority: false,
+  publisher: false,
+  limits: false,
+  engine: false,
+});
 const idleManuscriptUpload = (): ManuscriptUploadState => ({
   status: "idle",
   fileName: "",
@@ -220,12 +243,8 @@ export default function Home() {
   const [seen, setSeen] = useState<string[]>([]);
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [view, setView] = useState<"recommendations" | "explorer">("recommendations");
-  const [openFilters, setOpenFilters] = useState<Record<FilterPanelKey, boolean>>({
-    authority: false,
-    publisher: false,
-    limits: false,
-    engine: false,
-  });
+  const [openFilters, setOpenFilters] = useState<Record<FilterPanelKey, boolean>>(closedFilters);
+  const [filterSnapshot, setFilterSnapshot] = useState<FilterSnapshot | null>(null);
   const [sort, setSort] = useState<SortKey>("kpos");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -425,6 +444,85 @@ export default function Home() {
     setPublisherFilters((current) => current.filter((item) => item !== value));
   }
 
+  function captureFilterSnapshot(): FilterSnapshot {
+    return {
+      budget,
+      days,
+      speedLocked,
+      metrics: { ...metrics },
+      quartilePreset,
+      publisherFilters: [...publisherFilters],
+      jifMin,
+      jifMax,
+      eligibilityPolicy,
+      customList,
+      mode,
+      provider,
+      model,
+      baseUrl,
+      keyOpen,
+    };
+  }
+
+  function restoreFilterSnapshot(snapshot: FilterSnapshot) {
+    setBudget(snapshot.budget);
+    setDays(snapshot.days);
+    setSpeedLocked(snapshot.speedLocked);
+    setMetrics(snapshot.metrics);
+    setQuartilePreset(snapshot.quartilePreset);
+    setPublisherFilters(snapshot.publisherFilters);
+    setJifMin(snapshot.jifMin);
+    setJifMax(snapshot.jifMax);
+    setEligibilityPolicy(snapshot.eligibilityPolicy);
+    setCustomList(snapshot.customList);
+    setMode(snapshot.mode);
+    setProvider(snapshot.provider);
+    setModel(snapshot.model);
+    setBaseUrl(snapshot.baseUrl);
+    setKeyOpen(snapshot.keyOpen);
+  }
+
+  function closeFilterPanel() {
+    if (filterSnapshot) restoreFilterSnapshot(filterSnapshot);
+    setOpenFilters(closedFilters());
+    setFilterSnapshot(null);
+  }
+
+  function applyFilterPanel() {
+    setOpenFilters(closedFilters());
+    setFilterSnapshot(null);
+  }
+
+  function openFilterPanel(key: FilterPanelKey) {
+    if (openFilters[key]) {
+      closeFilterPanel();
+      return;
+    }
+    const snapshot = filterSnapshot || captureFilterSnapshot();
+    if (filterSnapshot) restoreFilterSnapshot(filterSnapshot);
+    setFilterSnapshot(snapshot);
+    setOpenFilters({ ...closedFilters(), [key]: true });
+  }
+
+  function setDhetRequirement(enabled: boolean) {
+    const usesCustom = eligibilityPolicy === "custom" || eligibilityPolicy === "dhet_or_custom";
+    if (enabled) {
+      setEligibilityPolicy(usesCustom ? "dhet_or_custom" : "dhet");
+    } else {
+      setEligibilityPolicy(usesCustom ? "custom" : "all");
+    }
+  }
+
+  function setCustomRequirement(enabled: boolean) {
+    if (!customList && enabled) return;
+    const usesDhet = eligibilityPolicy === "dhet" || eligibilityPolicy === "dhet_or_custom";
+    if (enabled) {
+      setEligibilityPolicy(usesDhet ? "dhet_or_custom" : "custom");
+    } else {
+      setEligibilityPolicy(usesDhet ? "dhet" : "all");
+    }
+  }
+
   function resetFilters() {
     setEligibilityPolicy("dhet");
     setCustomList(null);
@@ -439,18 +537,9 @@ export default function Home() {
     setMode("godmode");
     chooseProvider("deepseek");
     setKeyOpen(false);
-    setOpenFilters({ authority: false, publisher: false, limits: false, engine: false });
+    setOpenFilters(closedFilters());
+    setFilterSnapshot(null);
     setError("");
-  }
-
-  function setFilterPanelOpen(key: FilterPanelKey, open: boolean) {
-    setOpenFilters(() => ({
-      authority: false,
-      publisher: false,
-      limits: false,
-      engine: false,
-      [key]: open,
-    }));
   }
 
   function clearDraft() {
@@ -475,6 +564,8 @@ export default function Home() {
     setSeen([]);
     setDecisions({});
     setSelectedIds([]);
+    setOpenFilters(closedFilters());
+    setFilterSnapshot(null);
     setError("");
   }
 
@@ -588,8 +679,11 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload(exclude, selectedMode)),
     });
-    const body = await readApiJson<AnalysisResponse>(response, "Kagua could not complete the scan. Please try again.");
-    if (!response.ok) throw new Error(body.error || "Analysis failed");
+    const fallbackError = response.ok
+      ? "Kagua received an empty scan response. Please retry the scan."
+      : `Kagua scan failed (${response.status}${response.statusText ? ` ${response.statusText}` : ""}). Please adjust the filters or retry.`;
+    const body = await readApiJson<AnalysisResponse>(response, fallbackError);
+    if (!response.ok) throw new Error(body.error || fallbackError);
     if (!("journals" in body) || !Array.isArray(body.journals)) {
       throw new Error(body.error || "Kagua returned an empty analysis response. Please retry the scan.");
     }
@@ -710,6 +804,7 @@ export default function Home() {
             manuscriptWords={manuscriptWords}
             keywordCount={keywordList.length}
             onDemo={fillDemo}
+            onFilters={() => openFilterPanel("authority")}
             canSubmit={canSubmit}
             busy={busy}
             readiness={readiness}
@@ -776,18 +871,56 @@ export default function Home() {
                     type="button"
                     className="refineMenuButton"
                     aria-expanded={openFilters.authority}
-                    onClick={() => setFilterPanelOpen("authority", !openFilters.authority)}
+                    onClick={() => openFilterPanel("authority")}
                   >
                     <span>
                       <b>Authority</b>
                       <small>{policyLabels[eligibilityPolicy]}</small>
                     </span>
-                    <i>{openFilters.authority ? "Close" : "Edit"}</i>
+                    <i>{openFilters.authority ? "Editing" : "Edit"}</i>
                   </button>
                   {openFilters.authority && (
                     <div className="refineMenuPanel">
+                      <label className="switchRow">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          checked={eligibilityPolicy !== "all"}
+                          onChange={(e) => setEligibilityPolicy(e.target.checked ? "dhet" : "all")}
+                        />
+                        <span>
+                          <b>Use authority filter</b>
+                          <small>Turn this off for an open journal search.</small>
+                        </span>
+                      </label>
+                      <div className="criteriaStack">
+                        <label className="checkRow optionCheck">
+                          <input
+                            type="checkbox"
+                            checked={eligibilityPolicy === "dhet" || eligibilityPolicy === "dhet_or_custom"}
+                            disabled={eligibilityPolicy === "all"}
+                            onChange={(e) => setDhetRequirement(e.target.checked)}
+                          />
+                          <span>
+                            <b>Include DHET recognition</b>
+                            <small>Use the current official DHET list as an eligibility gate.</small>
+                          </span>
+                        </label>
+                        <label className={`checkRow optionCheck ${!customList ? "disabledOption" : ""}`}>
+                          <input
+                            type="checkbox"
+                            checked={(eligibilityPolicy === "custom" || eligibilityPolicy === "dhet_or_custom") && Boolean(customList)}
+                            disabled={eligibilityPolicy === "all" || !customList}
+                            onChange={(e) => setCustomRequirement(e.target.checked)}
+                          />
+                          <span>
+                            <b>Include uploaded institution list</b>
+                            <small>{customList ? "Use your uploaded list as another eligibility source." : "Upload a list below to enable this option."}</small>
+                          </span>
+                        </label>
+                      </div>
                       <label>
-                        Journal list policy
+                        Policy preset
                         <select value={eligibilityPolicy} onChange={(e) => setEligibilityPolicy(e.target.value as EligibilityPolicy)}>
                           <option value="dhet">DHET only (default)</option>
                           <option value="custom">University/institution list only</option>
@@ -833,6 +966,7 @@ export default function Home() {
                           </button>
                         </div>
                       )}
+                      <FilterPanelFooter applyLabel="Apply authority" onApply={applyFilterPanel} onClose={closeFilterPanel} />
                     </div>
                   )}
                 </div>
@@ -842,13 +976,13 @@ export default function Home() {
                     type="button"
                     className="refineMenuButton"
                     aria-expanded={openFilters.publisher}
-                    onClick={() => setFilterPanelOpen("publisher", !openFilters.publisher)}
+                    onClick={() => openFilterPanel("publisher")}
                   >
                     <span>
                       <b>Publisher</b>
                       <small>{publisherSummary}</small>
                     </span>
-                    <i>{openFilters.publisher ? "Close" : "Edit"}</i>
+                    <i>{openFilters.publisher ? "Editing" : "Edit"}</i>
                   </button>
                   {openFilters.publisher && (
                     <div className="refineMenuPanel">
@@ -905,6 +1039,7 @@ export default function Home() {
                           </div>
                         </div>
                       )}
+                      <FilterPanelFooter applyLabel="Apply publishers" onApply={applyFilterPanel} onClose={closeFilterPanel} />
                     </div>
                   )}
                 </div>
@@ -914,13 +1049,13 @@ export default function Home() {
                     type="button"
                     className="refineMenuButton"
                     aria-expanded={openFilters.limits}
-                    onClick={() => setFilterPanelOpen("limits", !openFilters.limits)}
+                    onClick={() => openFilterPanel("limits")}
                   >
                     <span>
                       <b>Limits</b>
                       <small>{limitSummary}</small>
                     </span>
-                    <i>{openFilters.limits ? "Close" : "Edit"}</i>
+                    <i>{openFilters.limits ? "Editing" : "Edit"}</i>
                   </button>
                   {openFilters.limits && (
                     <div className="refineMenuPanel">
@@ -972,6 +1107,7 @@ export default function Home() {
                           <small>Otherwise speed remains a pathway signal, not an exclusion rule.</small>
                         </span>
                       </label>
+                      <FilterPanelFooter applyLabel="Apply limits" onApply={applyFilterPanel} onClose={closeFilterPanel} />
                     </div>
                   )}
                 </div>
@@ -981,16 +1117,28 @@ export default function Home() {
                     type="button"
                     className="refineMenuButton"
                     aria-expanded={openFilters.engine}
-                    onClick={() => setFilterPanelOpen("engine", !openFilters.engine)}
+                    onClick={() => openFilterPanel("engine")}
                   >
                     <span>
                       <b>Advanced engine</b>
                       <small>{modeLabels[mode]}</small>
                     </span>
-                    <i>{openFilters.engine ? "Close" : "Open"}</i>
+                    <i>{openFilters.engine ? "Editing" : "Edit"}</i>
                   </button>
                   {openFilters.engine && (
                     <div className="refineMenuPanel">
+                      <label className="switchRow">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          checked={mode !== "none"}
+                          onChange={(e) => setMode(e.target.checked ? "godmode" : "none")}
+                        />
+                        <span>
+                          <b>Use advanced engine</b>
+                          <small>Turn off to use deterministic Kagua scoring only.</small>
+                        </span>
+                      </label>
                       <div className="segmented four engineModes" aria-label="LLM mode">
                         {(["godmode", "local", "provider", "none"] as LlmMode[]).map((x) => (
                           <button type="button" key={x} className={mode === x ? "active" : ""} onClick={() => setMode(x)}>
@@ -1043,6 +1191,7 @@ export default function Home() {
                           )}
                         </div>
                       )}
+                      <FilterPanelFooter applyLabel="Apply engine" onApply={applyFilterPanel} onClose={closeFilterPanel} />
                     </div>
                   )}
                 </div>
@@ -1200,6 +1349,27 @@ function MetricRow({
   );
 }
 
+function FilterPanelFooter({
+  applyLabel,
+  onApply,
+  onClose,
+}: {
+  applyLabel: string;
+  onApply: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="filterPanelFooter">
+      <button type="button" className="secondaryButton" onClick={onClose}>
+        Close
+      </button>
+      <button type="button" className="primary compactPrimary" onClick={onApply}>
+        {applyLabel}
+      </button>
+    </div>
+  );
+}
+
 function ManuscriptCard({
   inputMode,
   setInputMode,
@@ -1217,6 +1387,7 @@ function ManuscriptCard({
   manuscriptWords,
   keywordCount,
   onDemo,
+  onFilters,
   canSubmit,
   busy,
   readiness,
@@ -1241,6 +1412,7 @@ function ManuscriptCard({
   manuscriptWords: number;
   keywordCount: number;
   onDemo: () => void;
+  onFilters: () => void;
   canSubmit: boolean;
   busy: boolean;
   readiness: number;
@@ -1266,11 +1438,7 @@ function ManuscriptCard({
           <button type="button" className="secondaryButton sampleButton" onClick={onDemo}>
             Try sample
           </button>
-          <button
-            type="button"
-            className="secondaryButton sampleButton"
-            onClick={() => document.getElementById("journal-filters")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-          >
+          <button type="button" className="secondaryButton sampleButton" onClick={onFilters}>
             Filters
           </button>
           <div className="scanControl" aria-live="polite">
