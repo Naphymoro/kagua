@@ -28,6 +28,7 @@ type SortKey = "kpos" | "trilemma" | "fit" | "quality" | "affordability" | "spee
 type InputMode = "structured" | "upload" | "paste";
 type UploadStatus = "idle" | "reading" | "ready" | "error";
 type FilterPanelKey = "authority" | "publisher" | "limits" | "engine";
+type FilterGroupState = Record<FilterPanelKey, boolean>;
 type ManuscriptUploadState = {
   status: UploadStatus;
   fileName: string;
@@ -59,6 +60,7 @@ type Draft = {
   model: string;
   baseUrl: string;
   speedLocked: boolean;
+  filterGroups?: FilterGroupState;
 };
 type FilterSnapshot = {
   budget: number;
@@ -76,9 +78,16 @@ type FilterSnapshot = {
   model: string;
   baseUrl: string;
   keyOpen: boolean;
+  filterGroups: FilterGroupState;
 };
 
 const DRAFT_KEY = "kagua.hunter.draft.v2";
+const defaultFilterGroups = (): FilterGroupState => ({
+  authority: false,
+  publisher: false,
+  limits: false,
+  engine: false,
+});
 const closedFilters = (): Record<FilterPanelKey, boolean> => ({
   authority: false,
   publisher: false,
@@ -245,6 +254,7 @@ export default function Home() {
   const [view, setView] = useState<"recommendations" | "explorer">("recommendations");
   const [openFilters, setOpenFilters] = useState<Record<FilterPanelKey, boolean>>(closedFilters);
   const [filterSnapshot, setFilterSnapshot] = useState<FilterSnapshot | null>(null);
+  const [filterGroups, setFilterGroups] = useState<FilterGroupState>(defaultFilterGroups);
   const [sort, setSort] = useState<SortKey>("kpos");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -304,6 +314,7 @@ export default function Home() {
     if (draft.provider) setProvider(draft.provider);
     if (draft.model) setModel(draft.model);
     if (draft.baseUrl) setBaseUrl(draft.baseUrl);
+    if (draft.filterGroups) setFilterGroups({ ...defaultFilterGroups(), ...draft.filterGroups });
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -337,6 +348,7 @@ export default function Home() {
       model,
       baseUrl,
       speedLocked,
+      filterGroups,
     };
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
@@ -351,6 +363,7 @@ export default function Home() {
     budget,
     days,
     eligibilityPolicy,
+    filterGroups,
     jifMax,
     jifMin,
     keywords,
@@ -384,6 +397,10 @@ export default function Home() {
     metrics.impactFactor && jifSummary ? `JIF ${jifSummary}` : "",
     speedLocked ? `Decision <= ${days} days` : "",
   ].filter(Boolean).join(" · ") || "Metrics as signals";
+  const appliedPolicySummary = filterGroups.authority ? policyLabels[eligibilityPolicy] : "Not applied";
+  const appliedPublisherSummary = filterGroups.publisher ? publisherSummary : "Not applied";
+  const appliedLimitSummary = filterGroups.limits ? limitSummary : "Not applied";
+  const appliedEngineSummary = filterGroups.engine ? modeLabels[mode] : "Off";
   const abstractWords = useMemo(() => abstract.trim().split(/\s+/).filter(Boolean).length, [abstract]);
   const manuscriptWords = useMemo(() => manuscript.trim().split(/\s+/).filter(Boolean).length, [manuscript]);
   const readiness = useMemo(() => {
@@ -397,9 +414,9 @@ export default function Home() {
       if (inputMode === "upload" && manuscriptUpload.status === "ready") score += 8;
     }
     if (keywordList.length >= 3) score += 16;
-    if (eligibilityPolicy === "dhet" || customList || eligibilityPolicy === "all") score += 14;
+    if (!filterGroups.authority || eligibilityPolicy === "dhet" || customList || eligibilityPolicy === "all") score += 14;
     return Math.min(100, score);
-  }, [abstractWords, customList, eligibilityPolicy, inputMode, keywordList.length, manuscript, manuscriptUpload.status, manuscriptWords, title]);
+  }, [abstractWords, customList, eligibilityPolicy, filterGroups.authority, inputMode, keywordList.length, manuscript, manuscriptUpload.status, manuscriptWords, title]);
   const table = useMemo(
     () => [...(data?.rankingExplorer || [])].sort((a, b) => Number(b[sort] || 0) - Number(a[sort] || 0)),
     [data, sort],
@@ -437,6 +454,7 @@ export default function Home() {
 
   function addPublisherFilter(value: string) {
     if (!value) return;
+    setFilterGroupActive("publisher", true);
     setPublisherFilters((current) => (current.includes(value) ? current : [...current, value]));
   }
 
@@ -461,6 +479,7 @@ export default function Home() {
       model,
       baseUrl,
       keyOpen,
+      filterGroups,
     };
   }
 
@@ -480,6 +499,13 @@ export default function Home() {
     setModel(snapshot.model);
     setBaseUrl(snapshot.baseUrl);
     setKeyOpen(snapshot.keyOpen);
+    setFilterGroups(snapshot.filterGroups);
+  }
+
+  function setFilterGroupActive(key: FilterPanelKey, enabled: boolean) {
+    setFilterGroups((current) => ({ ...current, [key]: enabled }));
+    if (enabled && key === "authority" && eligibilityPolicy === "all") setEligibilityPolicy("dhet");
+    if (enabled && key === "engine" && mode === "none") setMode("godmode");
   }
 
   function closeFilterPanel() {
@@ -539,6 +565,7 @@ export default function Home() {
     setKeyOpen(false);
     setOpenFilters(closedFilters());
     setFilterSnapshot(null);
+    setFilterGroups(defaultFilterGroups());
     setError("");
   }
 
@@ -566,6 +593,7 @@ export default function Home() {
     setSelectedIds([]);
     setOpenFilters(closedFilters());
     setFilterSnapshot(null);
+    setFilterGroups(defaultFilterGroups());
     setError("");
   }
 
@@ -590,6 +618,7 @@ export default function Home() {
       if (!parsed.entries.length) throw new Error("No journal titles or ISSNs were detected in that file.");
       setCustomList(parsed);
       setEligibilityPolicy("custom");
+      setFilterGroupActive("authority", true);
     } catch (e) {
       setCustomList(null);
       setError(e instanceof Error ? e.message : "Could not parse the journal list.");
@@ -642,6 +671,9 @@ export default function Home() {
   }
 
   function payload(exclude: string[], selectedMode: LlmMode) {
+    const effectiveEligibilityPolicy = filterGroups.authority ? eligibilityPolicy : "all";
+    const effectiveMetrics: MetricPreferences = filterGroups.limits ? metrics : { apc: false, quartile: false, impactFactor: false };
+    const effectivePublisherFilters = filterGroups.publisher ? publisherFilters : [];
     const llm =
       selectedMode === "provider"
         ? { mode: selectedMode, provider, apiKey, model, baseUrl }
@@ -656,16 +688,22 @@ export default function Home() {
       keywords: keywordList,
       budgetUsd: budget,
       desiredDays: days,
-      dhetOnly: eligibilityPolicy === "dhet",
-      eligibilityPolicy,
-      customJournalList: customList || undefined,
-      metricPreferences: metrics,
-      constraintLocks: { dhet: true, apc: true, quartile: true, impactFactor: true, speed: speedLocked },
-      quartileSelection: metrics.quartile ? selectedQuartiles : [],
-      impactFactorMin: metrics.impactFactor && jifMin !== "" ? Number(jifMin) : null,
-      impactFactorMax: metrics.impactFactor && jifMax !== "" ? Number(jifMax) : null,
-      publisherFilters,
-      publisherFilter: publisherFilters[0] || null,
+      dhetOnly: filterGroups.authority && eligibilityPolicy === "dhet",
+      eligibilityPolicy: effectiveEligibilityPolicy,
+      customJournalList: filterGroups.authority ? customList || undefined : undefined,
+      metricPreferences: effectiveMetrics,
+      constraintLocks: {
+        dhet: filterGroups.authority,
+        apc: filterGroups.limits && metrics.apc,
+        quartile: filterGroups.limits && metrics.quartile,
+        impactFactor: filterGroups.limits && metrics.impactFactor,
+        speed: filterGroups.limits && speedLocked,
+      },
+      quartileSelection: filterGroups.limits && metrics.quartile ? selectedQuartiles : [],
+      impactFactorMin: filterGroups.limits && metrics.impactFactor && jifMin !== "" ? Number(jifMin) : null,
+      impactFactorMax: filterGroups.limits && metrics.impactFactor && jifMax !== "" ? Number(jifMax) : null,
+      publisherFilters: effectivePublisherFilters,
+      publisherFilter: effectivePublisherFilters[0] || null,
       excludeJournalIds: exclude,
       batchSize: 5,
       explorerSize: 50,
@@ -695,10 +733,10 @@ export default function Home() {
     setBusy(true);
     setError("");
     try {
-      if ((eligibilityPolicy === "custom" || eligibilityPolicy === "dhet_or_custom") && !customList) {
+      if (filterGroups.authority && (eligibilityPolicy === "custom" || eligibilityPolicy === "dhet_or_custom") && !customList) {
         throw new Error("Upload a university or institution journal list before using this eligibility policy.");
       }
-      const response = await run([], mode === "local" ? "none" : mode);
+      const response = await run([], filterGroups.engine ? (mode === "local" ? "none" : mode) : "none");
       setHistory([response]);
       setHistoryIndex(0);
       setSeen(response.journals.map((j) => j.id));
@@ -775,9 +813,9 @@ export default function Home() {
           </p>
         </div>
         <div className="heroDeck" aria-label="Kagua operating status">
-          <HeroMetric label="Authority" value={policyLabels[eligibilityPolicy]} />
+          <HeroMetric label="Authority" value={appliedPolicySummary} />
           <HeroMetric label="Readiness" value={`${readiness}%`} />
-          <HeroMetric label="Publisher" value={publisherSummary} />
+          <HeroMetric label="Publisher" value={appliedPublisherSummary} />
           <HeroMetric label="Batch" value={data ? `Top ${data.journals.length}` : "Ready"} />
           <button type="button" className="heroTheme" onClick={() => setTheme(theme === "light" ? "dark" : "light")}>
             {theme === "light" ? "Dark mode" : "Light mode"}
@@ -808,8 +846,8 @@ export default function Home() {
             canSubmit={canSubmit}
             busy={busy}
             readiness={readiness}
-            publisherSummary={publisherSummary}
-            policy={policyLabels[eligibilityPolicy]}
+            publisherSummary={appliedPublisherSummary}
+            policy={appliedPolicySummary}
             error={error}
           >
             <section id="journal-filters" className="refinementDock" aria-label="Journal search refinements">
@@ -819,11 +857,11 @@ export default function Home() {
                   <b>{data ? `Batch ${batch} settings` : "Optional before scan"}</b>
                 </div>
                 <div className="activeFilterBar refinementChips" aria-label="Active search refinements">
-                  <span className="activeFilter fixed">
+                  <span className={`activeFilter ${filterGroups.authority ? "fixed" : "mutedFilter"}`}>
                     <b>Authority</b>
-                    {policyLabels[eligibilityPolicy]}
+                    {appliedPolicySummary}
                   </span>
-                  {publisherFilters.length ? (
+                  {filterGroups.publisher && publisherFilters.length ? (
                     publisherFilters.map((value) => {
                       const label = PUBLISHER_OPTIONS.find((option) => option.value === value)?.label || value;
                       return (
@@ -843,16 +881,16 @@ export default function Home() {
                   ) : (
                     <span className="activeFilter mutedFilter">
                       <b>Publisher</b>
-                      Any
+                      {appliedPublisherSummary}
                     </span>
                   )}
-                  <span className={`activeFilter ${limitSummary === "Metrics as signals" ? "mutedFilter" : "fixed"}`}>
+                  <span className={`activeFilter ${filterGroups.limits ? "fixed" : "mutedFilter"}`}>
                     <b>Limits</b>
-                    {limitSummary}
+                    {appliedLimitSummary}
                   </span>
-                  <span className="activeFilter mutedFilter">
+                  <span className={`activeFilter ${filterGroups.engine ? "fixed" : "mutedFilter"}`}>
                     <b>Engine</b>
-                    {modeLabels[mode]}
+                    {appliedEngineSummary}
                   </span>
                 </div>
                 <div className="filterActions refinementActions">
@@ -866,39 +904,47 @@ export default function Home() {
               </div>
 
               <div className="refinementMenus" aria-label="Refinement controls">
-                <div className={`refineMenu ${openFilters.authority ? "isOpen" : ""}`}>
-                  <button
-                    type="button"
-                    className="refineMenuButton"
-                    aria-expanded={openFilters.authority}
-                    onClick={() => openFilterPanel("authority")}
-                  >
-                    <span>
-                      <b>Authority</b>
-                      <small>{policyLabels[eligibilityPolicy]}</small>
-                    </span>
-                    <i>{openFilters.authority ? "Editing" : "Edit"}</i>
-                  </button>
+                <div className={`refineMenu ${openFilters.authority ? "isOpen" : ""} ${filterGroups.authority ? "hasApplied" : ""}`}>
+                  <div className="refineMenuCard">
+                    <label className="refineMenuApply" title="Apply Authority filter">
+                      <input
+                        type="checkbox"
+                        checked={filterGroups.authority}
+                        onChange={(e) => setFilterGroupActive("authority", e.target.checked)}
+                        aria-label="Apply Authority filter"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="refineMenuButton"
+                      aria-expanded={openFilters.authority}
+                      onClick={() => openFilterPanel("authority")}
+                    >
+                      <span>
+                        <b>Authority</b>
+                        <small>{appliedPolicySummary}</small>
+                      </span>
+                      <i>{openFilters.authority ? "Editing" : "Edit"}</i>
+                    </button>
+                  </div>
                   {openFilters.authority && (
                     <div className="refineMenuPanel">
-                      <label className="switchRow">
+                      <label className="checkRow optionCheck parentOption">
                         <input
                           type="checkbox"
-                          role="switch"
-                          checked={eligibilityPolicy !== "all"}
-                          onChange={(e) => setEligibilityPolicy(e.target.checked ? "dhet" : "all")}
+                          checked={filterGroups.authority}
+                          onChange={(e) => setFilterGroupActive("authority", e.target.checked)}
                         />
                         <span>
-                          <b>Use authority filter</b>
-                          <small>Turn this off for an open journal search.</small>
+                          <b>Apply Authority filter</b>
+                          <small>When unchecked, Kagua uses open eligibility and ignores the nested authority choices.</small>
                         </span>
                       </label>
-                      <div className="criteriaStack">
+                      <div className={`nestedCriteria ${filterGroups.authority ? "" : "isMuted"}`}>
                         <label className="checkRow optionCheck">
                           <input
                             type="checkbox"
                             checked={eligibilityPolicy === "dhet" || eligibilityPolicy === "dhet_or_custom"}
-                            disabled={eligibilityPolicy === "all"}
                             onChange={(e) => setDhetRequirement(e.target.checked)}
                           />
                           <span>
@@ -910,7 +956,7 @@ export default function Home() {
                           <input
                             type="checkbox"
                             checked={(eligibilityPolicy === "custom" || eligibilityPolicy === "dhet_or_custom") && Boolean(customList)}
-                            disabled={eligibilityPolicy === "all" || !customList}
+                            disabled={!customList}
                             onChange={(e) => setCustomRequirement(e.target.checked)}
                           />
                           <span>
@@ -966,26 +1012,48 @@ export default function Home() {
                           </button>
                         </div>
                       )}
-                      <FilterPanelFooter applyLabel="Apply authority" onApply={applyFilterPanel} onClose={closeFilterPanel} />
+                      <FilterPanelFooter applyLabel="Save authority choices" onApply={applyFilterPanel} onClose={closeFilterPanel} />
                     </div>
                   )}
                 </div>
 
-                <div className={`refineMenu ${openFilters.publisher ? "isOpen" : ""}`}>
-                  <button
-                    type="button"
-                    className="refineMenuButton"
-                    aria-expanded={openFilters.publisher}
-                    onClick={() => openFilterPanel("publisher")}
-                  >
-                    <span>
-                      <b>Publisher</b>
-                      <small>{publisherSummary}</small>
-                    </span>
-                    <i>{openFilters.publisher ? "Editing" : "Edit"}</i>
-                  </button>
+                <div className={`refineMenu ${openFilters.publisher ? "isOpen" : ""} ${filterGroups.publisher ? "hasApplied" : ""}`}>
+                  <div className="refineMenuCard">
+                    <label className="refineMenuApply" title="Apply Publisher filter">
+                      <input
+                        type="checkbox"
+                        checked={filterGroups.publisher}
+                        onChange={(e) => setFilterGroupActive("publisher", e.target.checked)}
+                        aria-label="Apply Publisher filter"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="refineMenuButton"
+                      aria-expanded={openFilters.publisher}
+                      onClick={() => openFilterPanel("publisher")}
+                    >
+                      <span>
+                        <b>Publisher</b>
+                        <small>{appliedPublisherSummary}</small>
+                      </span>
+                      <i>{openFilters.publisher ? "Editing" : "Edit"}</i>
+                    </button>
+                  </div>
                   {openFilters.publisher && (
                     <div className="refineMenuPanel">
+                      <label className="checkRow optionCheck parentOption">
+                        <input
+                          type="checkbox"
+                          checked={filterGroups.publisher}
+                          onChange={(e) => setFilterGroupActive("publisher", e.target.checked)}
+                        />
+                        <span>
+                          <b>Apply Publisher filter</b>
+                          <small>When unchecked, selected publisher chips are saved but ignored by the scan.</small>
+                        </span>
+                      </label>
+                      <div className={`nestedCriteria ${filterGroups.publisher ? "" : "isMuted"}`}>
                       <label>
                         Add publisher groups
                         <select
@@ -1039,26 +1107,49 @@ export default function Home() {
                           </div>
                         </div>
                       )}
-                      <FilterPanelFooter applyLabel="Apply publishers" onApply={applyFilterPanel} onClose={closeFilterPanel} />
+                      </div>
+                      <FilterPanelFooter applyLabel="Save publisher choices" onApply={applyFilterPanel} onClose={closeFilterPanel} />
                     </div>
                   )}
                 </div>
 
-                <div className={`refineMenu ${openFilters.limits ? "isOpen" : ""}`}>
-                  <button
-                    type="button"
-                    className="refineMenuButton"
-                    aria-expanded={openFilters.limits}
-                    onClick={() => openFilterPanel("limits")}
-                  >
-                    <span>
-                      <b>Limits</b>
-                      <small>{limitSummary}</small>
-                    </span>
-                    <i>{openFilters.limits ? "Editing" : "Edit"}</i>
-                  </button>
+                <div className={`refineMenu ${openFilters.limits ? "isOpen" : ""} ${filterGroups.limits ? "hasApplied" : ""}`}>
+                  <div className="refineMenuCard">
+                    <label className="refineMenuApply" title="Apply Limits filter">
+                      <input
+                        type="checkbox"
+                        checked={filterGroups.limits}
+                        onChange={(e) => setFilterGroupActive("limits", e.target.checked)}
+                        aria-label="Apply Limits filter"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="refineMenuButton"
+                      aria-expanded={openFilters.limits}
+                      onClick={() => openFilterPanel("limits")}
+                    >
+                      <span>
+                        <b>Limits</b>
+                        <small>{appliedLimitSummary}</small>
+                      </span>
+                      <i>{openFilters.limits ? "Editing" : "Edit"}</i>
+                    </button>
+                  </div>
                   {openFilters.limits && (
                     <div className="refineMenuPanel">
+                      <label className="checkRow optionCheck parentOption">
+                        <input
+                          type="checkbox"
+                          checked={filterGroups.limits}
+                          onChange={(e) => setFilterGroupActive("limits", e.target.checked)}
+                        />
+                        <span>
+                          <b>Apply Limits filter</b>
+                          <small>When unchecked, APC, quartile, JIF, and decision-time settings are saved but ignored.</small>
+                        </span>
+                      </label>
+                      <div className={`nestedCriteria ${filterGroups.limits ? "" : "isMuted"}`}>
                       <div className="metricAccordion">
                         <MetricRow label="APC" checked={metrics.apc} onChange={(v) => setMetrics({ ...metrics, apc: v })}>
                           <label>
@@ -1107,38 +1198,49 @@ export default function Home() {
                           <small>Otherwise speed remains a pathway signal, not an exclusion rule.</small>
                         </span>
                       </label>
-                      <FilterPanelFooter applyLabel="Apply limits" onApply={applyFilterPanel} onClose={closeFilterPanel} />
+                      </div>
+                      <FilterPanelFooter applyLabel="Save limit choices" onApply={applyFilterPanel} onClose={closeFilterPanel} />
                     </div>
                   )}
                 </div>
 
-                <div className={`refineMenu advancedRefineMenu ${openFilters.engine ? "isOpen" : ""}`}>
-                  <button
-                    type="button"
-                    className="refineMenuButton"
-                    aria-expanded={openFilters.engine}
-                    onClick={() => openFilterPanel("engine")}
-                  >
-                    <span>
-                      <b>Advanced engine</b>
-                      <small>{modeLabels[mode]}</small>
-                    </span>
-                    <i>{openFilters.engine ? "Editing" : "Edit"}</i>
-                  </button>
+                <div className={`refineMenu advancedRefineMenu ${openFilters.engine ? "isOpen" : ""} ${filterGroups.engine ? "hasApplied" : ""}`}>
+                  <div className="refineMenuCard">
+                    <label className="refineMenuApply" title="Apply Advanced engine">
+                      <input
+                        type="checkbox"
+                        checked={filterGroups.engine}
+                        onChange={(e) => setFilterGroupActive("engine", e.target.checked)}
+                        aria-label="Apply Advanced engine"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="refineMenuButton"
+                      aria-expanded={openFilters.engine}
+                      onClick={() => openFilterPanel("engine")}
+                    >
+                      <span>
+                        <b>Advanced engine</b>
+                        <small>{appliedEngineSummary}</small>
+                      </span>
+                      <i>{openFilters.engine ? "Editing" : "Edit"}</i>
+                    </button>
+                  </div>
                   {openFilters.engine && (
                     <div className="refineMenuPanel">
-                      <label className="switchRow">
+                      <label className="checkRow optionCheck parentOption">
                         <input
                           type="checkbox"
-                          role="switch"
-                          checked={mode !== "none"}
-                          onChange={(e) => setMode(e.target.checked ? "godmode" : "none")}
+                          checked={filterGroups.engine}
+                          onChange={(e) => setFilterGroupActive("engine", e.target.checked)}
                         />
                         <span>
-                          <b>Use advanced engine</b>
-                          <small>Turn off to use deterministic Kagua scoring only.</small>
+                          <b>Apply Advanced engine</b>
+                          <small>When unchecked, Kagua uses deterministic scoring and ignores provider/model choices.</small>
                         </span>
                       </label>
+                      <div className={`nestedCriteria ${filterGroups.engine ? "" : "isMuted"}`}>
                       <div className="segmented four engineModes" aria-label="LLM mode">
                         {(["godmode", "local", "provider", "none"] as LlmMode[]).map((x) => (
                           <button type="button" key={x} className={mode === x ? "active" : ""} onClick={() => setMode(x)}>
@@ -1191,7 +1293,8 @@ export default function Home() {
                           )}
                         </div>
                       )}
-                      <FilterPanelFooter applyLabel="Apply engine" onApply={applyFilterPanel} onClose={closeFilterPanel} />
+                      </div>
+                      <FilterPanelFooter applyLabel="Save engine choices" onApply={applyFilterPanel} onClose={closeFilterPanel} />
                     </div>
                   )}
                 </div>
@@ -1206,7 +1309,7 @@ export default function Home() {
               readiness={readiness}
               abstractWords={abstractWords}
               keywordCount={keywordList.length}
-              policy={policyLabels[eligibilityPolicy]}
+              policy={appliedPolicySummary}
               busy={busy}
             />
           ) : (

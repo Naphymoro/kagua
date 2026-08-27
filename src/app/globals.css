@@ -353,21 +353,42 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
   padding-inline: 2px;
 }
 .refineMenu { position: relative; min-width: min(180px, 100%); }
-.refineMenuButton {
-  width: 100%; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+.refineMenuCard {
+  width: 100%; min-height: 42px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: stretch;
   border: 1px solid var(--line); border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--ink);
-  padding: 8px 10px; text-align: left; cursor: pointer;
-  transition: border-color .15s, background .15s, color .15s, box-shadow .15s;
+  overflow: hidden; transition: border-color .15s, background .15s, color .15s, box-shadow .15s;
 }
-.refineMenuButton:hover {
+.refineMenuCard:hover {
   border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
   background: color-mix(in srgb, var(--soft) 34%, var(--surface));
 }
-.refineMenu.isOpen .refineMenuButton {
+.refineMenu.isOpen .refineMenuCard {
   border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
   background: var(--soft); color: var(--accent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.refineMenu.hasApplied .refineMenuCard {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.refineMenuApply {
+  min-width: 40px; display: grid; place-items: center; margin: 0; padding: 0 10px;
+  border-right: 1px solid var(--line); background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+  cursor: pointer;
+}
+.refineMenuApply input { width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; }
+.refineMenu.hasApplied .refineMenuApply {
+  background: color-mix(in srgb, var(--soft) 78%, var(--surface));
+}
+.refineMenuButton {
+  width: 100%; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border: 0; border-radius: 0; background: transparent; color: inherit;
+  padding: 8px 10px; text-align: left; cursor: pointer;
+  transition: background .15s;
+}
+.refineMenuButton:hover {
+  background: color-mix(in srgb, var(--soft) 34%, var(--surface));
 }
 .refineMenuButton span { min-width: 0; display: block; }
 .refineMenuButton b, .refineMenuButton small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -377,9 +398,10 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
   flex: 0 0 auto; color: var(--accent); font-size: 9px; font-style: normal;
   font-weight: 750; letter-spacing: .04em; text-transform: uppercase;
 }
-.advancedRefineMenu .refineMenuButton {
+.advancedRefineMenu .refineMenuCard {
   border-style: dashed; background: transparent; color: var(--ink-soft);
 }
+.advancedRefineMenu.hasApplied .refineMenuCard { border-style: solid; }
 .refineMenuPanel {
   position: absolute; top: calc(100% + 8px); left: 0; z-index: 45;
   width: min(560px, calc(100vw - 48px)); max-height: min(70vh, 620px); overflow: auto;
@@ -430,12 +452,23 @@ h1 em { color: var(--accent); font-style: italic; font-weight: 500; }
   margin: 0; padding: 10px 11px; border: 1px solid var(--line);
   border-radius: var(--radius-sm); background: var(--surface);
 }
+.parentOption {
+  margin-bottom: 10px; border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  background: color-mix(in srgb, var(--soft) 62%, var(--surface));
+}
 .optionCheck input { width: 17px; height: 17px; }
 .optionCheck b, .optionCheck small { display: block; }
 .optionCheck small { margin-top: 3px; color: var(--muted); font-size: 11px; font-weight: 500; line-height: 1.35; }
 .optionCheck:has(input:checked) {
   border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
   background: color-mix(in srgb, var(--soft) 66%, var(--surface));
+}
+.nestedCriteria {
+  display: grid; gap: 8px; margin-left: 8px; padding-left: 13px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 32%, var(--line));
+}
+.nestedCriteria.isMuted {
+  border-left-style: dashed; opacity: .76;
 }
 .disabledOption { opacity: .65; }
 
